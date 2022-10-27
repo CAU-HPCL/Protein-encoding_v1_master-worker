@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <memory.h>
 #include <math.h>
 #include <time.h>
 
@@ -499,35 +500,170 @@ bool ParetoComparison(const Population* new_population, const Population* popula
 		return false;
 }
 
+
+#define EMPTY -1
 /* this function sorting by rank and crowding distance */
-void SortbyRankCrowding(const Population* population, int pop_size)
+void SortbyRankCrowding(Population* pop, int pop_size,int num_cds,int len_amino_seq)
 {
+	/* this point out population index value */
+	int** Sp, ** F;
+	int* np, * Q;
+	
 	/* memory allocation */
-	Population** pop_set;			// store population to sorting
-	pop_set = (Population**)malloc(sizeof(Population*) * pop_size);
+	Sp = (int**)malloc(sizeof(int*) * pop_size);
+	F = (int**)malloc(sizeof(int*) * pop_size);
 	for (int i = 0; i < pop_size; i++) {
-		pop_set[i] = (Population*)malloc(sizeof(Population) * pop_size);
+		Sp[i] = (int*)malloc(sizeof(int) * pop_size);
+		F[i] = (int*)malloc(sizeof(int) * pop_size);
+	}
+	np = (int*)malloc(sizeof(int) * pop_size);
+	Q = (int*)malloc(sizeof(int) * pop_size);
+	
+
+	// F empty initialization
+	for (int i = 0; i < pop_size; i++) {						
+		memset(F[i], EMPTY, sizeof(int) * pop_size);
 	}
 
-	for (int i = 0; i < pop_size; i++) {
 
+	/* ------------------------------------------------- fast non-dominated sort -------------------------------------------- */
+	int Sp_idx;
+	int F_idx = 0;
+	for (int i = 0; i < pop_size; i++)							// population index
+	{
+		Sp_idx = 0;
+		memset(Sp[i], EMPTY, sizeof(int) * pop_size);
+		np[i] = 0;
+		for (int j = 0; j < pop_size; j++)						 
+		{
+			if (ParetoComparison(&pop[i], &pop[j]))
+				Sp[i][Sp_idx++] = j;
+			else if (ParetoComparison(&pop[j], &pop[i]))
+				np[i] += 1;
+		}
+		if (np[i] == 0) {
+			pop[i].rank = 1;
+			F[0][F_idx++] = i;									// 1st front set setting
+		}
+	}
+
+	int F_front = 0;											// indicate 1st front
+	F_idx = 0;
+	int Q_idx;
+	while (F[F_front][F_idx]!=EMPTY)
+	{
+		memset(Q, EMPTY, sizeof(int) * pop_size);
+		Q_idx = 0;
+		for (F_idx = 0; F[F_front][F_idx] != EMPTY && F_idx < pop_size; F_idx++) {					// F[F_front][F_idx]  == population index
+			for (Sp_idx = 0; Sp[F[F_front][F_idx]][Sp_idx] != EMPTY && Sp_idx < pop_size; Sp_idx++) {
+				np[Sp[F[F_front][F_idx]][Sp_idx]]--;
+				if (np[Sp[F[F_front][F_idx]][Sp_idx]] == 0)
+				{
+					pop[Sp[F[F_front][F_idx]][Sp_idx]].rank = F_front + 2;
+					Q[Q_idx++] = Sp[F[F_front][F_idx]][Sp_idx];
+				}
+			}
+		}
+		
+		F_front ++;
+		Q_idx = 0;
+		while (Q[Q_idx] != EMPTY) {
+			F[F_front][Q_idx] = Q[Q_idx];
+			Q_idx ++;
+		}
+		F_idx = 0;
+	}
+	/* ------------------------------------------------- end non dominated sort -------------------------------------------------- */
+
+
+	/* ------------------------------------------------- crowding distance assignment -------------------------------------------- */
+	int l;
+	int tmp;
+	F_front = 0;
+	F_idx = 0;
+	while (F[F_front][0] != EMPTY)
+	{
+		l = 0;							// number of solutions in pareto rank
+		for (F_idx = 0; F[F_front][F_idx] != EMPTY && F_idx < pop_size; F_idx++)
+			l++;
+		for (int i = 0; i < l; i++)
+			pop[F[F_front][i]].crowding_distance = 0;
+		for (int i = 0; i < OBJECTIVE_NUM; i++)
+		{
+			for (int j = 0; j < l; j++) {
+				for (int k = 0; k < l - 1 - j; k++) {
+					if (pop[F[F_front][k]].sol.obj_val[i] > pop[F[F_front][k + 1]].sol.obj_val[i]) {
+						tmp = F[F_front][k];
+						F[F_front][k] = F[F_front][k + 1];
+						F[F_front][k + 1] = tmp;
+					}
+				}
+			}
+			
+			pop[F[F_front][0]].crowding_distance = 9999;
+			pop[F[F_front][l - 1]].crowding_distance = 9999;
+		
+			for (int j = 1; j < l - 1; j++)
+				pop[F[F_front][j]].crowding_distance += (pop[F[F_front][j + 1]].sol.obj_val[i] - pop[F[F_front][j - 1]].sol.obj_val[i]) / (1 - 0);
+		}
+
+		for (int j = 0; j < l; j++) {
+			for (int k = 0; k < l - 1 - j; k++) {
+				if (pop[F[F_front][k]].crowding_distance < pop[F[F_front][k + 1]].crowding_distance) {
+					tmp = F[F_front][k];
+					F[F_front][k] = F[F_front][k + 1];
+					F[F_front][k + 1] = tmp;
+				}
+			}
+		}
+		
+			F_front++;
+	}
+	/* ------------------------------------------------ end crowding distance assignment -------------------------------------------- */
+
+	Population* tmp_pop;
+	tmp_pop = AllocPopulation(pop_size, num_cds, len_amino_seq);
+	for (int i = 0; i < pop_size; i++) {
+		CopyPopulation(&pop[i], &tmp_pop[i], num_cds, len_amino_seq);
+	}
+	F_front = 0;
+	F_idx = 0;
+	int p_idx = 0;
+	while (F[F_front][F_idx] != EMPTY && F_idx < pop_size)
+	{
+		CopyPopulation(&tmp_pop[F[F_front][F_idx]], &pop[p_idx], num_cds, len_amino_seq);
+		p_idx++;
+		F_idx++;
+		if (F[F_front][F_idx] == EMPTY) {
+			F_front++;
+			F_idx = 0;
+		}
 	}
 
 
 	/* free memory */
+	FreePopulation(tmp_pop, pop_size, num_cds);
 	for (int i = 0; i < pop_size; i++) {
-		free(pop_set[i]);
+		free(Sp[i]);
+		free(F[i]);
 	}
-	free(pop_set);
+	free(Sp);
+	free(F);
+	free(np);
+	free(Q);
 
 	return;
 }
 
+
 /* this function caculate selection probability */
-/*  */
-double CalSelectionProb(Population* pop)
+void CalSelectionProb(Population* pop, int pop_size)
 {
-	return 1;
+	for (int i = 0; i < pop_size; i++) {
+		pop[i].sel_prob = 1. / (pop[i].rank + 1);
+	}
+	
+	return;
 }
 
 /* Roulette-wheel selection based on selection probability */
@@ -566,10 +702,10 @@ void PrintPopulation(const Population* population, int num_CDSs)
 	printf("\tmHD value : %lf\n", population->sol.obj_val[_mHD]);
 	printf("\tMLRCS value : %lf\n", population->sol.obj_val[_MLRCS]);
 
-	for (int i = 0; i < num_CDSs; i++) {			// population's CDSs loop
-		printf("\nPopulatin's CDS [%d] : \n", i);
-		printf("%s\n", population->sol.cds[i]);
-	}
+	//for (int i = 0; i < num_CDSs; i++) {			// population's CDSs loop
+	//	printf("\nPopulatin's CDS [%d] : \n", i);
+	//	printf("%s\n", population->sol.cds[i]);
+	//}
 
 	printf("count : %d\n", ++cnt);
 
@@ -711,8 +847,8 @@ int main()
 		}
 		/* ----------------------------------------- end Employed bees step ----------------------------------------- */
 		
-		//SortbyRankCrowding(pop, colony_size);
-		//CalSelectionProb(pop);
+		SortbyRankCrowding(pop, colony_size, num_cds, len_amino_seq);
+		CalSelectionProb(pop, colony_size);
 		
 		/* -------------------------------------- start Onlooker bees step ------------------------------------------ */
 		for (int j = colony_size; j < 2 * colony_size; j++)
@@ -735,13 +871,16 @@ int main()
 		}
 		/* ------------------------------------------ end Onlooker bees step ----------------------------------------- */
 		
-
+		
 		/* ------------------------------------- start Scout bees step ----------------------------------------------- */
 		for (int j = 0; j < 2 * colony_size; j++)
 		{
 			if (pop[j].counter > limit) 
 			{
 				GenSolution(tmp_sol, num_cds, amino_seq_idx, len_amino_seq, RANDOM_GEN);
+				mCAI(tmp_sol, num_cds, amino_seq_idx, len_amino_seq);
+				mHD(tmp_sol, num_cds, len_amino_seq);
+				MLRCS(tmp_sol, num_cds, len_amino_seq);
 				/* Scout Bee search */
 				for (int k = 0; k < i; k++) 
 				{
@@ -752,17 +891,13 @@ int main()
 					CopyPopulation(new_sol, tmp_sol, num_cds, len_amino_seq);
 					FreePopulation(new_sol, 1, num_cds);
 				}
+				
 				CopyPopulation(tmp_sol, &pop[j], num_cds, len_amino_seq);
-
-				/* Calculate Objective Function */
-				mCAI(&pop[j], num_cds, amino_seq_idx, len_amino_seq);
-				mHD(&pop[j], num_cds, len_amino_seq);
-				MLRCS(&pop[j], num_cds, len_amino_seq);
 				pop[j].counter = 0;
 			}
 		}
 		/* ------------------------------------------ end Scout bees step -------------------------------------------- */
-		//SortbyRankCrowding(pop, colony_size * 2);
+		SortbyRankCrowding(pop, colony_size * 2, num_cds, len_amino_seq);
 	
 	}
 	/* ----------------------------------------------------- end max cyelce ---------------------------------------------------------------- */
@@ -770,7 +905,7 @@ int main()
 
 
 	// Print 
-	for (int i = 0; i < colony_size * 2; i++) {
+	for (int i = 0; i < colony_size; i++) {
 		PrintPopulation(&pop[i], num_cds);
 	}
 
