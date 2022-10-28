@@ -361,16 +361,18 @@ Population* Mutation(const Population* pop, int num_cds, const char* amino_seq, 
 void mCAI(Population* pop, int num_cds, const int* amino_seq_idx, int len_amino_seq)
 {
 	char codon[3];
+	int idx;
 	int codon_idx;
 	double tmp;
 
 	pop->sol.obj_val[_mCAI] = 1;
 	for (int i = 0; i < num_cds; i++) {
+		idx = 0;
 		tmp = 1;
 		for (int j = 0; j < len_amino_seq; j++) {
-			codon[0] = pop->sol.cds[i][j * 3];
-			codon[1] = pop->sol.cds[i][j * 3 + 1];
-			codon[2] = pop->sol.cds[i][j * 3 + 2];
+			codon[0] = pop->sol.cds[i][idx++];
+			codon[1] = pop->sol.cds[i][idx++];
+			codon[2] = pop->sol.cds[i][idx++];
 			codon_idx = FindCodonIndex(amino_seq_idx[j], codon);
 			tmp *= pow(aa[amino_seq_idx[j]].adaptation[codon_idx], 1.0 / len_amino_seq);
 		}
