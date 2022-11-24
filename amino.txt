@@ -1,0 +1,103 @@
+Aminoacids codon frequency used in out study
+
+-------------- Aminoacid : A -----------
+codon[1] : GCG	adaptation : 0.136695
+codon[2] : GCA	adaptation : 0.390474
+codon[3] : GCC	adaptation : 0.532552
+codon[4] : GCU	adaptation : 1.000000
+
+-------------- Aminoacid : C -----------
+codon[1] : UGC	adaptation : 0.404325
+codon[2] : UGU	adaptation : 1.000000
+
+-------------- Aminoacid : D -----------
+codon[1] : GAC	adaptation : 0.703794
+codon[2] : GAU	adaptation : 1.000000
+
+-------------- Aminoacid : E -----------
+codon[1] : GAG	adaptation : 0.315994
+codon[2] : GAA	adaptation : 1.000000
+
+-------------- Aminoacid : F -----------
+codon[1] : UUU	adaptation : 0.942068
+codon[2] : UUC	adaptation : 1.000000
+
+-------------- Aminoacid : G -----------
+codon[1] : GGG	adaptation : 0.118007
+codon[2] : GGA	adaptation : 0.177201
+codon[3] : GGC	adaptation : 0.229387
+codon[4] : GGU	adaptation : 1.000000
+
+-------------- Aminoacid : H -----------
+codon[1] : CAC	adaptation : 0.761111
+codon[2] : CAU	adaptation : 1.000000
+
+-------------- Aminoacid : I -----------
+codon[1] : AUA	adaptation : 0.262779
+codon[2] : AUC	adaptation : 0.683539
+codon[3] : AUU	adaptation : 1.000000
+
+-------------- Aminoacid : K -----------
+codon[1] : AAA	adaptation : 0.846793
+codon[2] : AAG	adaptation : 1.000000
+
+-------------- Aminoacid : L -----------
+codon[1] : CUC	adaptation : 0.093180
+codon[2] : CUG	adaptation : 0.213970
+codon[3] : CUU	adaptation : 0.240603
+codon[4] : CUA	adaptation : 0.310151
+codon[5] : UUA	adaptation : 0.641383
+codon[6] : UUG	adaptation : 1.000000
+
+-------------- Aminoacid : M -----------
+codon[1] : AUG	adaptation : 1.000000
+
+-------------- Aminoacid : N -----------
+codon[1] : AAU	adaptation : 0.872203
+codon[2] : AAC	adaptation : 1.000000
+
+-------------- Aminoacid : P -----------
+codon[1] : CCG	adaptation : 0.118684
+codon[2] : CCC	adaptation : 0.184718
+codon[3] : CCU	adaptation : 0.510318
+codon[4] : CCA	adaptation : 1.000000
+
+-------------- Aminoacid : Q -----------
+codon[1] : CAG	adaptation : 0.301447
+codon[2] : CAA	adaptation : 1.000000
+
+-------------- Aminoacid : R -----------
+codon[1] : CGG	adaptation : 0.034955
+codon[2] : CGA	adaptation : 0.049980
+codon[3] : CGC	adaptation : 0.067253
+codon[4] : AGG	adaptation : 0.222302
+codon[5] : CGU	adaptation : 0.338001
+codon[6] : AGA	adaptation : 1.000000
+
+-------------- Aminoacid : S -----------
+codon[1] : UCG	adaptation : 0.210673
+codon[2] : AGC	adaptation : 0.261646
+codon[3] : AGU	adaptation : 0.386334
+codon[4] : UCA	adaptation : 0.457157
+codon[5] : UCC	adaptation : 0.638703
+codon[6] : UCU	adaptation : 1.000000
+
+-------------- Aminoacid : T -----------
+codon[1] : ACG	adaptation : 0.197513
+codon[2] : ACA	adaptation : 0.513351
+codon[3] : ACC	adaptation : 0.678761
+codon[4] : ACU	adaptation : 1.000000
+
+-------------- Aminoacid : V -----------
+codon[1] : GUA	adaptation : 0.283954
+codon[2] : GUG	adaptation : 0.323370
+codon[3] : GUC	adaptation : 0.604003
+codon[4] : GUU	adaptation : 1.000000
+
+-------------- Aminoacid : W -----------
+codon[1] : UGG	adaptation : 1.000000
+
+-------------- Aminoacid : Y -----------
+codon[1] : UAU	adaptation : 0.810796
+codon[2] : UAC	adaptation : 1.000000
+
