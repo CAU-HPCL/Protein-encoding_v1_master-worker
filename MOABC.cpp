@@ -618,7 +618,8 @@ void SortbyRankCrowding(Population* pop, int pop_size, int num_cds, int len_amin
 	Population* tmp_pop;
 	tmp_pop = AllocPopulation(pop_size, num_cds, len_amino_seq);
 	for (int i = 0; i < pop_size; i++) {
-		CopyPopulation(&pop[i], &tmp_pop[i], num_cds, len_amino_seq);
+		tmp_pop[i] = pop[i];
+		//CopyPopulation(&pop[i], &tmp_pop[i], num_cds, len_amino_seq);
 	}
 	F_front = 0;
 	F_idx = 0;
