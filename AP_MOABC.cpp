@@ -825,19 +825,14 @@ void WorkerTask(Population* pop, Queue* queue, int colony_size, int limit, float
 	em_thread = num_threads / 2;
 	on_thread = num_threads - em_thread - 1;
 
+	/* work distribution check compelete */
 	if (tid < em_thread) {
-		start = (colony_size / em_thread) * tid;
-		if (tid == em_thread - 1)
-			end = colony_size - 1;
-		else
-			end = start + (colony_size / em_thread) - 1;
+		start = (colony_size / em_thread) * tid + ((colony_size % em_thread) <= tid ? (colony_size % em_thread) : tid);
+		end = start + (colony_size / em_thread) + ((colony_size % em_thread) <= tid ? 0 : 1) - 1;
 	}
 	else {
-		start = colony_size + (colony_size / on_thread) * (tid - em_thread);
-		if (tid == num_threads - 1)
-			end = colony_size * 2 - 1;
-		else
-			end = start + (colony_size / on_thread) - 1;
+		start = colony_size + (colony_size / on_thread) * (tid - em_thread) + ((colony_size % on_thread) <= (tid - em_thread) ? (colony_size % on_thread) : (tid - em_thread));
+		end = start + (colony_size / on_thread) + ((colony_size % on_thread) <= (tid - em_thread) ? 0 : 1) - 1;
 	}
 	pos = start;
 
@@ -905,9 +900,10 @@ void WorkerTask(Population* pop, Queue* queue, int colony_size, int limit, float
 			CopyPopulation(tmp_sol, solution, num_cds, len_amino_seq);
 		}
 		// queue »ðÀÔ
+		printf("pos : %d \n", pos);
 		enqueue(&queue[tid], solution, pos);
 		pos++;
-		if (pos == end)
+		if (pos == end + 1)
 			pos = start;
 	}
 	FreePopulation(tmp_sol, 1, num_cds);
