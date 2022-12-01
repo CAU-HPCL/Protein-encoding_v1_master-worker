@@ -900,7 +900,7 @@ void WorkerTask(Population* pop, Queue* queue, int colony_size, int limit, float
 			CopyPopulation(tmp_sol, solution, num_cds, len_amino_seq);
 		}
 		// queue »ðÀÔ
-		printf("pos : %d \n", pos);
+		//printf("pos : %d \n", pos);
 		enqueue(&queue[tid], solution, pos);
 		pos++;
 		if (pos == end + 1)
@@ -915,6 +915,7 @@ void WorkerTask(Population* pop, Queue* queue, int colony_size, int limit, float
 /* ------------------------------------ Worker thread end definition ------------------------------------*/
 
 
+float MinEuclid(float* value[OBJECTIVE_NUM], int size);
 
 int main()
 {
@@ -1065,6 +1066,82 @@ int main()
 		else
 			WorkerTask(pop, queue, colony_size, limit, mprob, tid, num_cds, amino_seq_idx, len_amino_seq);
 	}
+
+
+	int size;		// store number of pareto optimal solutions eliminating overlapping
+
+	/* File write rank 1*/
+	fopen_s(&fp, "result.txt", "w");
+
+	size = 0;
+	int p_idx = 0;
+	while (pop[p_idx].rank == 1) {
+		if (pop[p_idx].sol.obj_val[_mCAI] == pop[p_idx + 1].sol.obj_val[_mCAI] &&
+			pop[p_idx].sol.obj_val[_mHD] == pop[p_idx + 1].sol.obj_val[_mHD] &&
+			pop[p_idx].sol.obj_val[_MLRCS] == pop[p_idx + 1].sol.obj_val[_MLRCS]) {
+			p_idx++;
+			continue;
+		}
+		else {
+			fprintf(fp, "\n ------------------------------ Print Population ------------------------------ \n ");
+			fprintf(fp, "\trank : %d\n", pop[p_idx].rank);
+			fprintf(fp, "\tcrowding distance : %f\n", pop[p_idx].crowding_distance);
+			fprintf(fp, "\tfitness : %f\n", pop[p_idx].fitness);
+			fprintf(fp, "\tcounter : %d\n", pop[p_idx].counter);
+			fprintf(fp, "\tselection probabiliy : %f\n", pop[p_idx].sel_prob);
+
+			fprintf(fp, "\tmCAI value : %f\n", pop[p_idx].sol.obj_val[_mCAI]);
+			fprintf(fp, "\tmHD value : %f\n", pop[p_idx].sol.obj_val[_mHD]);
+			fprintf(fp, "\tMLRCS value : %f\n", pop[p_idx].sol.obj_val[_MLRCS]);
+
+			idx = 0;
+			for (int i = 0; i < num_cds; i++) {					// population's CDSs loop
+				fprintf(fp, "\nPopulatin's CDS [%d] : \n", i);
+				for (int j = 0; j < len_amino_seq * 3; j++) {
+					fprintf(fp, "%c", pop[p_idx].sol.cds[i * len_amino_seq * 3 + j]);
+				}
+			}
+			size++;
+		}
+		p_idx++;
+	}
+
+	fclose(fp);
+	/* End file process */
+
+	/* ---------------------- For assess solutions processes -------------------------- */
+	float** org;
+	int org_idx;
+	org = (float**)malloc(sizeof(float*) * size);
+	for (int i = 0; i < size; i++) {
+		org[i] = (float*)malloc(sizeof(float) * OBJECTIVE_NUM);
+	}
+	
+	org_idx = 0;
+	p_idx = 0;
+	while (pop[p_idx].rank == 1) {
+		if (pop[p_idx].sol.obj_val[_mCAI] == pop[p_idx + 1].sol.obj_val[_mCAI] &&
+			pop[p_idx].sol.obj_val[_mHD] == pop[p_idx + 1].sol.obj_val[_mHD] &&
+			pop[p_idx].sol.obj_val[_MLRCS] == pop[p_idx + 1].sol.obj_val[_MLRCS]) {
+			p_idx++;
+			continue;
+		}
+		else {
+			org[org_idx][_mCAI] = pop[p_idx].sol.obj_val[_mCAI];
+			org[org_idx][_mHD] = pop[p_idx].sol.obj_val[_mHD];
+			org[org_idx][_MLRCS] = pop[p_idx].sol.obj_val[_MLRCS];
+			org_idx++;
+		}
+		p_idx++;
+	}
+
+	printf("Minimum distance to the ideal point : %f", MinEuclid(org, size));
+
+	for (int i = 0; i < size; i++) {
+		free(org[i]);
+	}
+	free(org);
+	/* ------------------------ process end ------------------------------- */
 
 	// Print 
 	for (int i = 0; i < colony_size * 2; i++) {
@@ -1293,4 +1370,54 @@ void CheckMutation(const Population* pop1, const Population* pop2, int num_cds, 
 			}
 		}
 	}
+}
+
+
+/* To assess solution considering objective function value */
+/* To calculate Set coverage */
+float Setcoverage(int *a[OBJECTIVE_NUM],int *b[OBJECTIVE_NUM],int a_size, int b_size)
+{
+	// the ratio of a coverage to b
+	bool* check;
+	int cnt;
+
+	check = (bool*)malloc(sizeof(bool) * b_size);
+	memset(check, false, sizeof(bool) * b_size);
+
+	for (int i = 0; i < a_size; i++) {
+		for (int j = 0; j < b_size; j++) {
+			if (a[i][_mCAI] >= b[j][_mCAI] &&
+				a[i][_mHD] >= b[j][_mHD] &&
+				a[i][_MLRCS] <= b[j][_MLRCS])
+				check[j] = true;
+		}
+	}
+
+	cnt = 0;
+	for (int i = 0; i < b_size; i++) {
+		if (check[i] == true)
+			cnt++;
+	}
+
+	return (float)cnt / b_size;
+}
+
+#define IDEAL_MCAI	1
+#define IDEAL_MHD	0.40
+#define IDEAL_MLRCS	0
+#define EUCLID(val1,val2,val3) sqrt(pow(IDEAL_MCAI - val1, 2) + pow(IDEAL_MHD - val2, 2) + pow(IDEAL_MLRCS, 2))
+/* Minimum distance to optimal objective value(point) */
+float MinEuclid(float* value[OBJECTIVE_NUM], int size)
+{
+	float res;
+	float tmp;
+
+	res = 100;
+	for (int i = 0; i < size; i++) {
+		tmp = (float)EUCLID(value[i][_mCAI], value[i][_mHD], value[i][_MLRCS]);
+		if (tmp < res)
+			res = tmp;
+	}
+
+	return res;
 }
