@@ -915,7 +915,7 @@ void WorkerTask(Population* pop, Queue* queue, int colony_size, int limit, float
 /* ------------------------------------ Worker thread end definition ------------------------------------*/
 
 
-float MinEuclid(float* value[OBJECTIVE_NUM], int size);
+float MinEuclid(float **value, int size);
 
 int main()
 {
@@ -1102,8 +1102,8 @@ int main()
 				}
 			}
 			size++;
+			p_idx++;
 		}
-		p_idx++;
 	}
 
 	fclose(fp);
@@ -1130,13 +1130,14 @@ int main()
 			org[org_idx][_mCAI] = pop[p_idx].sol.obj_val[_mCAI];
 			org[org_idx][_mHD] = pop[p_idx].sol.obj_val[_mHD];
 			org[org_idx][_MLRCS] = pop[p_idx].sol.obj_val[_MLRCS];
+			p_idx++;
 			org_idx++;
 		}
-		p_idx++;
 	}
 
-	printf("Minimum distance to the ideal point : %f", MinEuclid(org, size));
-
+	printf("Minimum distance to the ideal point : %f\n", MinEuclid(org, size));
+	printf("size : %d\n", size);
+	
 	for (int i = 0; i < size; i++) {
 		free(org[i]);
 	}
@@ -1144,9 +1145,9 @@ int main()
 	/* ------------------------ process end ------------------------------- */
 
 	// Print 
-	for (int i = 0; i < colony_size * 2; i++) {
-		PrintPopulation(&pop[i], num_cds, len_amino_seq);
-	}
+	//for (int i = 0; i < colony_size * 2; i++) {
+	//	PrintPopulation(&pop[i], num_cds, len_amino_seq);
+	//}
 	
 	/* free memory */
 	FreePopulation(pop, colony_size * 2, num_cds);
@@ -1405,16 +1406,16 @@ float Setcoverage(int *a[OBJECTIVE_NUM],int *b[OBJECTIVE_NUM],int a_size, int b_
 #define IDEAL_MCAI	1
 #define IDEAL_MHD	0.40
 #define IDEAL_MLRCS	0
-#define EUCLID(val1,val2,val3) sqrt(pow(IDEAL_MCAI - val1, 2) + pow(IDEAL_MHD - val2, 2) + pow(IDEAL_MLRCS, 2))
+#define EUCLID(val1,val2,val3) (float)sqrt(pow(IDEAL_MCAI - val1, 2) + pow(IDEAL_MHD - val2, 2) + pow(val3, 2))
 /* Minimum distance to optimal objective value(point) */
-float MinEuclid(float* value[OBJECTIVE_NUM], int size)
+float MinEuclid(float **value, int size)
 {
 	float res;
 	float tmp;
 
 	res = 100;
 	for (int i = 0; i < size; i++) {
-		tmp = (float)EUCLID(value[i][_mCAI], value[i][_mHD], value[i][_MLRCS]);
+		tmp = EUCLID(value[i][_mCAI], value[i][_mHD], value[i][_MLRCS]);
 		if (tmp < res)
 			res = tmp;
 	}
