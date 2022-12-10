@@ -257,6 +257,8 @@ void ChageSynonymousCodon(int amino_idx, char* cds, int cd_idx, int type)
 
 	return;
 }
+
+
 /* this function generate random mutated solution */
 Population* Mutation(const Population* pop, int num_cds, const int* amino_seq_idx, int len_amino_seq, float mprob)
 {
@@ -356,8 +358,9 @@ void mCAI(Population* pop, int num_cds, const int* amino_seq_idx, int len_amino_
 			codon[1] = pop->sol.cds[idx++];
 			codon[2] = pop->sol.cds[idx++];
 			codon_idx = FindCodonIndex(amino_seq_idx[j], codon);
-			tmp *= pow(aa[amino_seq_idx[j]].adaptation[codon_idx], 1.0 / len_amino_seq);
+			tmp *= aa[amino_seq_idx[j]].adaptation[codon_idx];
 		}
+		tmp = (float)pow(tmp, 1.0 / len_amino_seq);
 		if (tmp <= pop->sol.obj_val[_mCAI]) {
 			pop->sol.obj_val[_mCAI] = tmp;
 			pop->sol.obj_cdsidx[_mCAI][0] = i;			// CDS's index having mCAI value
@@ -701,7 +704,7 @@ int main()
 	srand(time(NULL));
 
 	/* amino sequence recieve from FASTA format */
-	char file_name[20] = "Q5VZP5.fasta.txt";
+	char file_name[20] = "B7KHU9.fasta.txt";
 	char buffer[256];
 	char* amino_seq;		// amino sequence comprising a CDS
 	int* amino_seq_idx;		// amino sequence corresponding index value to struct 'aa'
@@ -726,7 +729,6 @@ int main()
 		printf("Memory allocation failed at line : %d", __LINE__);
 		return EXIT_FAILURE;
 	}
-
 	int idx = 0;
 	char tmp;
 	while (!feof(fp)) {
@@ -747,7 +749,6 @@ int main()
 		amino_seq_idx[i] = FindAminoIndex((AA)amino_seq[i]);
 	}
 	/* -------------------------------------------- end file proess ------------------------------------------------- */
-
 
 	/* user input parameter */
 	int max_cycle;				// number of generations
@@ -788,6 +789,8 @@ int main()
 	Population* pop;
 	pop = AllocPopulation(colony_size * 2, num_cds, len_amino_seq);
 
+	fopen_s(&fp, "sp_result.txt", "w");
+
 
 	omp_set_num_threads(num_threads);
 #pragma omp parallel 
@@ -797,6 +800,8 @@ int main()
 		tmp_sol = AllocPopulation(1, num_cds, len_amino_seq);
 		int cycle;
 		bool check;
+
+		int p_idx;
 
 		/* --------------------------------------------------- initialize Population ------------------------------------------------------- */
 #pragma omp for
@@ -898,17 +903,33 @@ int main()
 			}
 			/* ------------------------------------------ end Scout bees step -------------------------------------------- */
 #pragma omp single
-			SortbyRankCrowding(pop, colony_size * 2, num_cds, len_amino_seq);
+			{SortbyRankCrowding(pop, colony_size * 2, num_cds, len_amino_seq);
+			p_idx = 0;
+			for (int i = 0; i < 2 * colony_size;i++) {
+				if (pop[p_idx].sol.obj_val[_mCAI] == pop[p_idx + 1].sol.obj_val[_mCAI] &&
+					pop[p_idx].sol.obj_val[_mHD] == pop[p_idx + 1].sol.obj_val[_mHD] &&
+					pop[p_idx].sol.obj_val[_MLRCS] == pop[p_idx + 1].sol.obj_val[_MLRCS]) {
+					p_idx++;
+					continue;
+				}
+				else {
+					fprintf(fp, "%f %f %f\n", -pop[p_idx].sol.obj_val[_mCAI], -pop[p_idx].sol.obj_val[_mHD], pop[p_idx].sol.obj_val[_MLRCS]);
+					p_idx++;
+				}
+			}}
 		}
 		FreePopulation(tmp_sol, 1, num_cds);
 	}
 	/* ----------------------------------------------------- end max cyelce ---------------------------------------------------------------- */
 
 
+	fclose(fp);
+
+
 	// Print 
-	for (int i = 0; i < colony_size * 2; i++) {
-		PrintPopulation(&pop[i], num_cds, len_amino_seq);
-	}
+	//for (int i = 0; i < colony_size * 2; i++) {
+	//	PrintPopulation(&pop[i], num_cds, len_amino_seq);
+	//}
 
 
 	/* free memory */

@@ -1,4 +1,4 @@
-#include <stdio.h>
+ï»¿#include <stdio.h>
 #include <stdlib.h>
 #include <memory.h>
 #include <math.h>
@@ -61,7 +61,7 @@ typedef struct {
 	float obj_val[OBJECTIVE_NUM];		// objective function value (0 ~ 1) for Pareto Comparsion
 }Solution;
 typedef struct {
-	int cnt;
+	int cnt;							// generation count about solution
 	int counter;						// checking counter to obsolete this solution
 	int rank;							// indicate Pareto front (rank)
 	float crowding_distance;			// indicate diversity of solution in same rank
@@ -721,20 +721,24 @@ typedef struct Queue
 
 void initQueue(Queue* queue)
 {
-	queue->front = queue->rear = NULL;
+	queue->front = NULL;
+	queue->rear = NULL;
 	queue->cnt = 0;
 }
 
-int isEmpty(Queue* queue)		// if queue is empty return true
+bool isEmpty(Queue* queue)		// if queue is empty return true
 {
-	return queue->cnt == 0;
+	if (queue->cnt == 0)
+		return true;
+	else
+		return false;
 }
 
 void enqueue(Queue* queue, Population* pop, int position)
 {
 	Node* newNode = (Node*)malloc(sizeof(Node)); 
-	newNode->s.pop = pop;
 	newNode->s.pos = position;
+	newNode->s.pop = pop;
 	newNode->next = NULL;
 
 	if (isEmpty(queue))    
@@ -745,20 +749,18 @@ void enqueue(Queue* queue, Population* pop, int position)
 	queue->cnt++;    
 }
 
+// when if you dequeue checking queue is not empty
 Sol dequeue(Queue* queue)
 {
 	Sol res;
-	Node* ptr;
-	if (isEmpty(queue)){
-		printf("Error : Queue is empty!\n");
-		//return;
-	}
-	ptr = queue->front; 
-	
-	res.pop = ptr->s.pop;
-	res.pos = ptr->s.pos;
-	queue->front = ptr->next;    
-	free(ptr);     
+	Node* tmp;
+
+	res.pop = queue->front->s.pop;
+	res.pos = queue->front->s.pos;
+
+	tmp = queue->front; 
+	queue->front = queue->front->next;    
+	free(tmp);     
 	queue->cnt--;    
 
 	return res;
@@ -777,23 +779,21 @@ void MasterTask(Population* pop, Population* sw_pop, Queue* queue, int colony_si
 {
 	int eval;
 	bool update;
-	Sol s;
 	Population* tmp;
+	Sol s_tmp;
 	
-
 	eval = 0;
 	while (eval < max_eval)
 	{
 		update = false;
 		for (int i = 0; i < num_threads - 1; i++) {
-			while (isEmpty(&queue[i]) == false && eval < max_eval) {
-				s = dequeue(&queue[i]);
-				CopyPopulation(s.pop, &sw_pop[s.pos], num_cds, len_amino_seq);
-				FreePopulation(s.pop, 1, num_cds);
+			while (!isEmpty(&queue[i]) && eval < max_eval) {
+				s_tmp = dequeue(&queue[i]);
+				CopyPopulation(s_tmp.pop, &sw_pop[s_tmp.pos], num_cds, len_amino_seq);
+				FreePopulation(s_tmp.pop, 1, num_cds);
 				update = true;
-				// update evaluation
 				eval++;
-				sw_pop[s.pos].cnt++;
+				sw_pop[s_tmp.pos].cnt++;			// ---> each solution generation count update
 			}
 		}
 		if (update) {
@@ -811,21 +811,21 @@ void MasterTask(Population* pop, Population* sw_pop, Queue* queue, int colony_si
 }
 /* ------------------------------------ Master thread end definition ------------------------------------*/
 
+
 /* ------------------------------- Worker thread function definition ------------------------------------*/
-void WorkerTask(Population* pop, Queue* queue, int colony_size, int limit, float mprob, int tid, int num_cds, int* amino_seq_idx, int len_amino_seq)
+void WorkerTask(Population* pop, Queue* queue, int colony_size, int limit, float mprob, int tid, int num_cds, int* amino_seq_idx, int len_amino_seq,FILE * fp)
 {
 	int start, end, pos;
 	int em_thread, on_thread;
 	bool check;
 	Population* new_sol, * sel_sol, * tmp_sol;
 	Population* solution;
+	Sol f_for;		// For non-dominated file update
 
-	tmp_sol = AllocPopulation(1, num_cds, len_amino_seq);
-
-	em_thread = num_threads / 2;
-	on_thread = num_threads - em_thread - 1;
 
 	/* work distribution check compelete */
+	em_thread = num_threads / 2;
+	on_thread = num_threads - em_thread - 1;
 	if (tid < em_thread) {
 		start = (colony_size / em_thread) * tid + ((colony_size % em_thread) <= tid ? (colony_size % em_thread) : tid);
 		end = start + (colony_size / em_thread) + ((colony_size % em_thread) <= tid ? 0 : 1) - 1;
@@ -836,10 +836,13 @@ void WorkerTask(Population* pop, Queue* queue, int colony_size, int limit, float
 	}
 	pos = start;
 
+
+	tmp_sol = AllocPopulation(1, num_cds, len_amino_seq);
 	while (stop == false)
 	{
 		solution = AllocPopulation(1, num_cds, len_amino_seq);
-		if (tid < em_thread)			// Perform Employed Bee Processing
+		/* Perform Employed Bee Processing */
+		if (tid < em_thread)			
 		{
 			new_sol = Mutation(&pop[pos], num_cds, amino_seq_idx, len_amino_seq, mprob);		
 			/* Calculate Objective Functions */
@@ -849,7 +852,6 @@ void WorkerTask(Population* pop, Queue* queue, int colony_size, int limit, float
 			/* Pareto Comparision */
 			check = ParetoComparison(new_sol, &pop[pos]);
 			if (check) {
-				new_sol->cnt = pop[pos].cnt;
 				CopyPopulation(new_sol, solution, num_cds, len_amino_seq);
 			}
 			else {
@@ -858,10 +860,11 @@ void WorkerTask(Population* pop, Queue* queue, int colony_size, int limit, float
 			}
 			FreePopulation(new_sol, 1, num_cds);
 		}
-		else								// Perform Onlooker Bee Processing
+		/* Perform Onlooker Bee Processing */
+		else								
 		{
-			sel_sol = &pop[SelectSolution(pop, colony_size)];								// select solution
-			new_sol = Mutation(sel_sol, num_cds, amino_seq_idx, len_amino_seq, mprob);		// Onlooker Bee search
+			sel_sol = &pop[SelectSolution(pop, colony_size)];								
+			new_sol = Mutation(sel_sol, num_cds, amino_seq_idx, len_amino_seq, mprob);		
 			/* Calculate Objective Function */
 			mCAI(new_sol, num_cds, amino_seq_idx, len_amino_seq);
 			mHD(new_sol, num_cds, len_amino_seq);
@@ -869,7 +872,6 @@ void WorkerTask(Population* pop, Queue* queue, int colony_size, int limit, float
 			/* Pareto Comparison */
 			check = ParetoComparison(new_sol, sel_sol);
 			if (check) {
-				new_sol->cnt = sel_sol->cnt;
 				CopyPopulation(new_sol, solution, num_cds, len_amino_seq);
 			}
 			else {
@@ -878,16 +880,15 @@ void WorkerTask(Population* pop, Queue* queue, int colony_size, int limit, float
 			}
 			FreePopulation(new_sol, 1, num_cds);
 		}
-
+		/* Perform Scout Bee Processing */
 		if (solution->counter > limit)
 		{
-			// Perform Scout Bee Processing
 			GenSolution(tmp_sol, num_cds, amino_seq_idx, len_amino_seq, RANDOM_GEN);
 			mCAI(tmp_sol, num_cds, amino_seq_idx, len_amino_seq);
 			mHD(tmp_sol, num_cds, len_amino_seq);
 			MLRCS(tmp_sol, num_cds, len_amino_seq);
 			/* Scout Bee search */
-			for (int j = 0; j < solution->cnt; j++)
+			for (int i = 0; i < solution->cnt; i++)
 			{
 				new_sol = Mutation(tmp_sol, num_cds, amino_seq_idx, len_amino_seq, mprob);
 				mCAI(new_sol, num_cds, amino_seq_idx, len_amino_seq);
@@ -899,16 +900,26 @@ void WorkerTask(Population* pop, Queue* queue, int colony_size, int limit, float
 			tmp_sol->cnt = solution->cnt;
 			CopyPopulation(tmp_sol, solution, num_cds, len_amino_seq);
 		}
-		// queue »ðÀÔ
-		//printf("pos : %d \n", pos);
+		/* insert solution at queue if queue size over than end - start waiting */
+		//while (true) {
+		//	if (queue[tid].cnt < (end - start + 1)) {
+		//		enqueue(&queue[tid], solution, pos);
+		//		break;
+		//	}
+		//}
 		enqueue(&queue[tid], solution, pos);
 		pos++;
 		if (pos == end + 1)
 			pos = start;
 	}
-	FreePopulation(tmp_sol, 1, num_cds);
-	// non-dominated file update ÇÊ¿ä
+	// non-dominated file update í•„ìš”
+	while (!isEmpty(&queue[tid])) {
+		f_for = dequeue(&queue[tid]);
+		fprintf(fp, "%f %f %f\n", -f_for.pop->sol.obj_val[_mCAI], -f_for.pop->sol.obj_val[_mHD], f_for.pop->sol.obj_val[_MLRCS]);
+		FreePopulation(f_for.pop, 1, num_cds);
+	}
 
+	FreePopulation(tmp_sol, 1, num_cds);
 
 	return;
 }
@@ -917,12 +928,13 @@ void WorkerTask(Population* pop, Queue* queue, int colony_size, int limit, float
 
 float MinEuclid(float **value, int size);
 
+
 int main()
 {
 	srand(time(NULL));
 
 	/* amino sequence recieve from FASTA format */
-	char file_name[20] = "Q5VZP5.fasta.txt";
+	char file_name[20] = "B7KHU9.fasta.txt";
 	char buffer[256];
 	char* amino_seq;		// amino sequence comprising a CDS
 	int* amino_seq_idx;		// amino sequence corresponding index value to struct 'aa'
@@ -1005,19 +1017,29 @@ int main()
 	}
 
 
+
+	/* colony size * 2 needs to upper than total threads number */
+	if (colony_size * 2 < num_threads) {
+		printf("colony size * 2 needs to upper than total threads number\n");
+		return EXIT_FAILURE;
+	}
+
+
+
 	/* Population memory allocation */
 	Population* pop, *sw_pop;
 	pop = AllocPopulation(colony_size * 2, num_cds, len_amino_seq);
 	sw_pop = AllocPopulation(colony_size * 2, num_cds, len_amino_seq);
 	
-	// qeueu initialize
+	// queue initialize
 	Queue* queue;
-	queue = (Queue*)malloc(sizeof(Queue) * num_threads);
+	queue = (Queue*)malloc(sizeof(Queue) * (num_threads - 1));
 	for (int i = 0; i < num_threads - 1; i++) {
 		initQueue(&queue[i]);
 	}
 
 	int tid;
+	fopen_s(&fp, "ap_result.txt", "w");
 	omp_set_num_threads(num_threads);
 #pragma omp parallel private(tid)
 	{
@@ -1041,6 +1063,7 @@ int main()
 			}
 			pop[i].cnt = 0;
 		}
+		// if master thread sort 2 * colony size and initial there are garbage value exist so setting is needs
 #pragma omp for
 		for (int i = colony_size; i < colony_size * 2; i++) {
 			pop[i].sol.obj_val[_mCAI] = 0;
@@ -1064,50 +1087,49 @@ int main()
 			MasterTask(pop, sw_pop, queue, colony_size, colony_size * max_cycle, num_cds, len_amino_seq);
 		/* Worker thread */
 		else
-			WorkerTask(pop, queue, colony_size, limit, mprob, tid, num_cds, amino_seq_idx, len_amino_seq);
+			WorkerTask(pop, queue, colony_size, limit, mprob, tid, num_cds, amino_seq_idx, len_amino_seq, fp);
 	}
-
 
 	int size;		// store number of pareto optimal solutions eliminating overlapping
 
-	/* File write rank 1*/
-	fopen_s(&fp, "result.txt", "w");
-
+	/* Non dominated file-update */
 	size = 0;
 	int p_idx = 0;
 	while (pop[p_idx].rank == 1) {
 		if (pop[p_idx].sol.obj_val[_mCAI] == pop[p_idx + 1].sol.obj_val[_mCAI] &&
 			pop[p_idx].sol.obj_val[_mHD] == pop[p_idx + 1].sol.obj_val[_mHD] &&
-			pop[p_idx].sol.obj_val[_MLRCS] == pop[p_idx + 1].sol.obj_val[_MLRCS]) {
+			pop[p_idx].sol.obj_val[_MLRCS] == pop[p_idx + 1].sol.obj_val[_MLRCS] &&
+			pop[p_idx].counter > 0) {
 			p_idx++;
 			continue;
 		}
 		else {
-			fprintf(fp, "\n ------------------------------ Print Population ------------------------------ \n ");
-			fprintf(fp, "\trank : %d\n", pop[p_idx].rank);
-			fprintf(fp, "\tcrowding distance : %f\n", pop[p_idx].crowding_distance);
-			fprintf(fp, "\tfitness : %f\n", pop[p_idx].fitness);
-			fprintf(fp, "\tcounter : %d\n", pop[p_idx].counter);
-			fprintf(fp, "\tselection probabiliy : %f\n", pop[p_idx].sel_prob);
+			//fprintf(fp, "\n ------------------------------ Print Population ------------------------------ \n ");
+			//fprintf(fp, "\trank : %d\n", pop[p_idx].rank);
+			//fprintf(fp, "\tcrowding distance : %f\n", pop[p_idx].crowding_distance);
+			//fprintf(fp, "\tfitness : %f\n", pop[p_idx].fitness);
+			//fprintf(fp, "\tcounter : %d\n", pop[p_idx].counter);
+			//fprintf(fp, "\tselection probabiliy : %f\n", pop[p_idx].sel_prob);
 
-			fprintf(fp, "\tmCAI value : %f\n", pop[p_idx].sol.obj_val[_mCAI]);
-			fprintf(fp, "\tmHD value : %f\n", pop[p_idx].sol.obj_val[_mHD]);
-			fprintf(fp, "\tMLRCS value : %f\n", pop[p_idx].sol.obj_val[_MLRCS]);
+			//fprintf(fp, "\tmCAI value : %f\n", pop[p_idx].sol.obj_val[_mCAI]);
+			//fprintf(fp, "\tmHD value : %f\n", pop[p_idx].sol.obj_val[_mHD]);
+			//fprintf(fp, "\tMLRCS value : %f\n", pop[p_idx].sol.obj_val[_MLRCS]);
 
-			idx = 0;
-			for (int i = 0; i < num_cds; i++) {					// population's CDSs loop
-				fprintf(fp, "\nPopulatin's CDS [%d] : \n", i);
-				for (int j = 0; j < len_amino_seq * 3; j++) {
-					fprintf(fp, "%c", pop[p_idx].sol.cds[i * len_amino_seq * 3 + j]);
-				}
-			}
+			//idx = 0;
+			//for (int i = 0; i < num_cds; i++) {					// population's CDSs loop
+			//	fprintf(fp, "\nPopulatin's CDS [%d] : \n", i);
+			//	for (int j = 0; j < len_amino_seq * 3; j++) {
+			//		fprintf(fp, "%c", pop[p_idx].sol.cds[i * len_amino_seq * 3 + j]);
+			//	}
+			//}
+
+			fprintf(fp, "%f %f %f\n", -pop[p_idx].sol.obj_val[_mCAI], -pop[p_idx].sol.obj_val[_mHD], pop[p_idx].sol.obj_val[_MLRCS]);
 			size++;
 			p_idx++;
 		}
 	}
-
 	fclose(fp);
-	/* End file process */
+	/* ---------------------- End file process -------------------------------- */
 
 	/* ---------------------- For assess solutions processes -------------------------- */
 	float** org;
@@ -1142,7 +1164,7 @@ int main()
 		free(org[i]);
 	}
 	free(org);
-	/* ------------------------ process end ------------------------------- */
+	/* ----------------------------------- process end ----------------------------------- */
 
 	// Print 
 	//for (int i = 0; i < colony_size * 2; i++) {
