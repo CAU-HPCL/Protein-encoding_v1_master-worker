@@ -4,6 +4,7 @@
 #include <math.h>
 #include <time.h>
 #include <omp.h>
+#include <queue>
 
 
 #define _CRT_SECURE_NO_WARNINGS
@@ -699,83 +700,20 @@ void PrintPopulation(const Population* population, int num_cds, int len_amino_se
 //void CheckMLRCS(const char* s, int size);
 //void CheckMutation(const Population* pop1, const Population* pop2, int num_cds, const int* amino_seq_idx, const char* amino_seq, int len_amino_seq);
 
-/* ---------------------------- For Population queue function -------------------------------------- */
 typedef struct Sol
 {
 	int pos;
 	Population* pop;
 }Sol;
 
-typedef struct Node
-{
-	Sol s;
-	struct Node* next;
-}Node;
-
-typedef struct Queue
-{
-	Node* front;
-	Node* rear;
-	int cnt;
-}Queue;
-
-void initQueue(Queue* queue)
-{
-	queue->front = NULL;
-	queue->rear = NULL;
-	queue->cnt = 0;
-}
-
-bool isEmpty(Queue* queue)		// if queue is empty return true
-{
-	if (queue->cnt == 0)
-		return true;
-	else
-		return false;
-}
-
-void enqueue(Queue* queue, Population* pop, int position)
-{
-	Node* newNode = (Node*)malloc(sizeof(Node)); 
-	newNode->s.pos = position;
-	newNode->s.pop = pop;
-	newNode->next = NULL;
-
-	if (isEmpty(queue))    
-		queue->front = newNode;
-	else   
-		queue->rear->next = newNode;    
-	queue->rear = newNode;       
-	queue->cnt++;    
-}
-
-// when if you dequeue checking queue is not empty
-Sol dequeue(Queue* queue)
-{
-	Sol res;
-	Node* tmp;
-
-	res.pop = queue->front->s.pop;
-	res.pos = queue->front->s.pos;
-
-	tmp = queue->front; 
-	queue->front = queue->front->next;    
-	free(tmp);     
-	queue->cnt--;    
-
-	return res;
-}
-/* --------------------------------- queue function end --------------------------------------- */
-
 
 /* global variable initialize */
-int num_threads = 16;
+#define NUM_THREADS 16
 bool stop = false;
 
 
-
 /* ------------------------------- Master thread function definition ------------------------------------*/
-void MasterTask(Population* pop, Population* sw_pop, Queue* queue, int colony_size, int max_eval, int num_cds, int len_amino_seq)
+void MasterTask(Population* pop, Population* sw_pop, std::queue<Sol> *sol_queue, int colony_size, int max_eval, int num_cds, int len_amino_seq)
 {
 	int eval;
 	bool update;
@@ -786,11 +724,12 @@ void MasterTask(Population* pop, Population* sw_pop, Queue* queue, int colony_si
 	while (eval < max_eval)
 	{
 		update = false;
-		for (int i = 0; i < num_threads - 1; i++) {
-			while (!isEmpty(&queue[i]) && eval < max_eval) {
-				s_tmp = dequeue(&queue[i]);
+		for (int i = 0; i < NUM_THREADS - 1; i++) {
+			while (!sol_queue[i].empty() && eval < max_eval) {
+				s_tmp = sol_queue[i].front();
+				sol_queue[i].pop();
 				CopyPopulation(s_tmp.pop, &sw_pop[s_tmp.pos], num_cds, len_amino_seq);
-				FreePopulation(s_tmp.pop, 1, num_cds);
+				//FreePopulation(s_tmp.pop, 1, num_cds);
 				update = true;
 				eval++;
 				sw_pop[s_tmp.pos].cnt++;			// ---> each solution generation count update
@@ -813,19 +752,20 @@ void MasterTask(Population* pop, Population* sw_pop, Queue* queue, int colony_si
 
 
 /* ------------------------------- Worker thread function definition ------------------------------------*/
-void WorkerTask(Population* pop, Queue* queue, int colony_size, int limit, float mprob, int tid, int num_cds, int* amino_seq_idx, int len_amino_seq,FILE * fp)
+void WorkerTask(Population* pop, std::queue<Sol> *sol_queue, int colony_size, int limit, float mprob, int tid, int num_cds, int* amino_seq_idx, int len_amino_seq, FILE* fp)
 {
 	int start, end, pos;
 	int em_thread, on_thread;
 	bool check;
 	Population* new_sol, * sel_sol, * tmp_sol;
 	Population* solution;
-	Sol f_for;		// For non-dominated file update
+	Sol* s_queue;
+	Sol s_file;
 
 
 	/* work distribution check compelete */
-	em_thread = num_threads / 2;
-	on_thread = num_threads - em_thread - 1;
+	em_thread = NUM_THREADS / 2;
+	on_thread = NUM_THREADS - em_thread - 1;
 	if (tid < em_thread) {
 		start = (colony_size / em_thread) * tid + ((colony_size % em_thread) <= tid ? (colony_size % em_thread) : tid);
 		end = start + (colony_size / em_thread) + ((colony_size % em_thread) <= tid ? 0 : 1) - 1;
@@ -837,10 +777,18 @@ void WorkerTask(Population* pop, Queue* queue, int colony_size, int limit, float
 	pos = start;
 
 
+	solution = AllocPopulation(1, num_cds, len_amino_seq);
 	tmp_sol = AllocPopulation(1, num_cds, len_amino_seq);
+	
+	// For insert queue memory allcation
+	s_queue = (Sol*)malloc(sizeof(Sol) * (end - start + 1));
+	for (int i = 0; i < (end - start + 1); i++)
+	{
+		s_queue[i].pop = AllocPopulation(1, num_cds, len_amino_seq);
+	}
+
 	while (stop == false)
 	{
-		solution = AllocPopulation(1, num_cds, len_amino_seq);
 		/* Perform Employed Bee Processing */
 		if (tid < em_thread)			
 		{
@@ -900,26 +848,30 @@ void WorkerTask(Population* pop, Queue* queue, int colony_size, int limit, float
 			tmp_sol->cnt = solution->cnt;
 			CopyPopulation(tmp_sol, solution, num_cds, len_amino_seq);
 		}
-		/* insert solution at queue if queue size over than end - start waiting */
-		//while (true) {
-		//	if (queue[tid].cnt < (end - start + 1)) {
-		//		enqueue(&queue[tid], solution, pos);
-		//		break;
-		//	}
-		//}
-		enqueue(&queue[tid], solution, pos);
+
+		CopyPopulation(solution, s_queue[end - pos].pop, num_cds, len_amino_seq);
+		//s_queue.pop = solution;
+		s_queue[end - pos].pos = pos;
+		sol_queue[tid].push(s_queue[end - pos]);
 		pos++;
 		if (pos == end + 1)
 			pos = start;
 	}
 	// non-dominated file update 필요
-	while (!isEmpty(&queue[tid])) {
-		f_for = dequeue(&queue[tid]);
-		fprintf(fp, "%f %f %f\n", -f_for.pop->sol.obj_val[_mCAI], -f_for.pop->sol.obj_val[_mHD], f_for.pop->sol.obj_val[_MLRCS]);
-		FreePopulation(f_for.pop, 1, num_cds);
+	while (!sol_queue[tid].empty()) {
+		s_file = sol_queue[tid].front();
+		sol_queue[tid].pop();
+		fprintf(fp, "%f %f %f\n", -s_file.pop->sol.obj_val[_mCAI], -s_file.pop->sol.obj_val[_mHD], s_file.pop->sol.obj_val[_MLRCS]);
+		//FreePopulation(s_file.pop, 1, num_cds);
 	}
 
+	FreePopulation(solution, 1, num_cds);
 	FreePopulation(tmp_sol, 1, num_cds);
+	for (int i = 0; i < (end - start + 1); i++)
+	{
+		free(s_queue[i].pop);
+	}
+	free(s_queue);
 
 	return;
 }
@@ -1019,7 +971,7 @@ int main()
 
 
 	/* colony size * 2 needs to upper than total threads number */
-	if (colony_size * 2 < num_threads) {
+	if (colony_size * 2 < NUM_THREADS) {
 		printf("colony size * 2 needs to upper than total threads number\n");
 		return EXIT_FAILURE;
 	}
@@ -1031,16 +983,11 @@ int main()
 	pop = AllocPopulation(colony_size * 2, num_cds, len_amino_seq);
 	sw_pop = AllocPopulation(colony_size * 2, num_cds, len_amino_seq);
 	
-	// queue initialize
-	Queue* queue;
-	queue = (Queue*)malloc(sizeof(Queue) * (num_threads - 1));
-	for (int i = 0; i < num_threads - 1; i++) {
-		initQueue(&queue[i]);
-	}
+	std::queue<Sol> sol_queue[NUM_THREADS - 1];
 
 	int tid;
 	fopen_s(&fp, "ap_result.txt", "w");
-	omp_set_num_threads(num_threads);
+	omp_set_num_threads(NUM_THREADS);
 #pragma omp parallel private(tid)
 	{
 		/* --------------------------------------------------- initialize Population ------------------------------------------------------- */
@@ -1083,11 +1030,11 @@ int main()
 
 		tid = omp_get_thread_num();
 		/* Master thread */
-		if (tid == num_threads - 1)
-			MasterTask(pop, sw_pop, queue, colony_size, colony_size * max_cycle, num_cds, len_amino_seq);
+		if (tid == NUM_THREADS - 1)
+			MasterTask(pop, sw_pop, sol_queue, colony_size, colony_size * max_cycle, num_cds, len_amino_seq);
 		/* Worker thread */
-		else
-			WorkerTask(pop, queue, colony_size, limit, mprob, tid, num_cds, amino_seq_idx, len_amino_seq, fp);
+		else 
+			WorkerTask(pop, sol_queue, colony_size, limit, mprob, tid, num_cds, amino_seq_idx, len_amino_seq, fp);
 	}
 
 	int size;		// store number of pareto optimal solutions eliminating overlapping
@@ -1176,7 +1123,7 @@ int main()
 	FreePopulation(sw_pop, colony_size * 2, num_cds);
 	free(amino_seq);
 	free(amino_seq_idx);
-	free(queue);
+	//free(queue);
 
 	return EXIT_SUCCESS;
 }
