@@ -228,6 +228,7 @@ void CopyPopulation(const Population* origin, Population* target, int num_cds, i
 	return;
 }
 
+
 #define RANDOM_ADAPTATION 0
 #define UPPER_ADAPTATION 1
 /* this function change codon into synonymous codon which is not same input codon excluding  number of synonymous codons is one */
@@ -277,7 +278,7 @@ Population* Mutation(const Population* pop, int num_cds, const int* amino_seq_id
 
 	// copy population to new_population
 	CopyPopulation(pop, new_pop, num_cds, len_amino_seq);
-	//new_pop->counter = 0;			
+	new_pop->counter = 0;			
 
 
 	/* generate (0 ~ 1) random number corresponding to codon in CDS */
@@ -346,7 +347,6 @@ Population* Mutation(const Population* pop, int num_cds, const int* amino_seq_id
 	return new_pop;
 }
 /* -------------------------------------------------------- end Population creation and mutaion ----------------------------------------------------- */
-
 
 
 /* --------------------------------------------------------- calculate objective function value ----------------------------------------------------- */
@@ -494,7 +494,6 @@ bool ParetoComparison(const Population* new_pop, const Population* old_pop)
 		return false;
 }
 /* ---------------------------------------------------------- end objective function caculation ------------------------------------------------------ */
-
 
 
 #define EMPTY -1
@@ -701,24 +700,21 @@ int SelectSolution(const Population* pop, int pop_size)
 }
 
 
-
 void PrintPopulation(const Population* population, int num_cds, int len_amino_seq);
 //void PrintAminoAcids();
 //void CompareCdsToAminoAcids(const char* cds, int num_cds, const int* amino_seq_idx, const char* amino_seq, int len_amino_seq);
 //void CheckMLRCS(const char* s, int size);
 //void CheckMutation(const Population* pop1, const Population* pop2, int num_cds, const int* amino_seq_idx, const char* amino_seq, int len_amino_seq);
 
+
 typedef struct Sol
 {
 	int pos;
 	Population* pop;
 }Sol;
-
-
 /* global variable initialize */
 #define NUM_THREADS 16
 bool stop = false;
-
 
 /* ------------------------------- Master thread function definition ------------------------------------*/
 void MasterTask(Population* pop, Population* sw_pop, std::queue<Sol> *sol_queue, int colony_size, int max_eval, int num_cds, int len_amino_seq)
@@ -757,7 +753,6 @@ void MasterTask(Population* pop, Population* sw_pop, std::queue<Sol> *sol_queue,
 	return;
 }
 /* ------------------------------------ Master thread end definition ------------------------------------*/
-
 
 /* ------------------------------- Worker thread function definition ------------------------------------*/
 void WorkerTask(Population* pop, std::queue<Sol> *sol_queue, int colony_size, int limit, float mprob, int tid, int num_cds, int* amino_seq_idx, int len_amino_seq, FILE* fp)
@@ -923,7 +918,8 @@ int main()
 	char tmp;
 	while (!feof(fp)) {
 		tmp = fgetc(fp);
-		if (tmp != '\n')amino_seq[idx++] = tmp;
+		if (tmp != '\n')
+			amino_seq[idx++] = tmp;
 	}
 	amino_seq[idx] = NULL;
 	len_amino_seq = idx - 1;
@@ -975,13 +971,10 @@ int main()
 		return EXIT_FAILURE;
 	}
 
-
-
 	/* colony size * 2 needs to upper than total threads number */
 	if (colony_size * 2 < NUM_THREADS) {
 		printf("colony size * 2 needs to upper than total threads number\n");
 		return EXIT_FAILURE;
-	}
 
 
 
@@ -993,7 +986,7 @@ int main()
 	std::queue<Sol> sol_queue[NUM_THREADS - 1];
 
 	int tid;
-	fopen_s(&fp, "ap_result.txt", "w");
+	fopen_s(&fp, "Ap_MOABC.txt", "w");
 	omp_set_num_threads(NUM_THREADS);
 #pragma omp parallel private(tid)
 	{
@@ -1044,8 +1037,8 @@ int main()
 			WorkerTask(pop, sol_queue, colony_size, limit, mprob, tid, num_cds, amino_seq_idx, len_amino_seq, fp);
 	}
 
-	int size;		// store number of pareto optimal solutions eliminating overlapping
 
+	int size;		// store number of pareto optimal solutions eliminating overlapping
 	/* Non dominated file-update */
 	size = 0;
 	int p_idx = 0;
@@ -1084,6 +1077,7 @@ int main()
 	}
 	fclose(fp);
 	/* ---------------------- End file process -------------------------------- */
+
 
 	/* ---------------------- For assess solutions processes -------------------------- */
 	float** org;
@@ -1126,6 +1120,7 @@ int main()
 	//	printf("%f %f %f\n", pop[i].sol.obj_val[_mCAI], pop[i].sol.obj_val[_mHD], pop[i].sol.obj_val[_MLRCS]);
 	//}
 	
+
 	/* free memory */
 	FreePopulation(pop, colony_size * 2, num_cds);
 	FreePopulation(sw_pop, colony_size * 2, num_cds);

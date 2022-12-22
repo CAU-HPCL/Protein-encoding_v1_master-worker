@@ -3,7 +3,7 @@
 #include <memory.h>
 #include <math.h>
 #include <omp.h>
-#include<random>
+#include <random>
 
 // random generator
 std::random_device rd;
@@ -273,7 +273,7 @@ Population* Mutation(const Population* pop, int num_cds, const int* amino_seq_id
 
 	// copy population to new_population
 	CopyPopulation(pop, new_pop, num_cds, len_amino_seq);
-	//new_pop->counter = 0;				
+	new_pop->counter = 0;				
 
 
 	/* generate (0 ~ 1) random number corresponding to codon in CDS */
@@ -287,7 +287,6 @@ Population* Mutation(const Population* pop, int num_cds, const int* amino_seq_id
 	int len_cds;
 	type = gen() % 4;
 	len_cds = 3 * len_amino_seq;
-	type = 3;
 	/* four type of variations */
 	switch (type)
 	{
@@ -342,7 +341,6 @@ Population* Mutation(const Population* pop, int num_cds, const int* amino_seq_id
 	return new_pop;
 }
 /* -------------------------------------------------------- end Population creation and mutaion ----------------------------------------------------- */
-
 
 
 /* --------------------------------------------------------- calculate objective function value ----------------------------------------------------- */
@@ -491,7 +489,6 @@ bool ParetoComparison(const Population* new_pop, const Population* old_pop)
 		return false;
 }
 /* ---------------------------------------------------------- end objective function caculation ------------------------------------------------------ */
-
 
 
 #define EMPTY -1
@@ -697,12 +694,12 @@ int SelectSolution(const Population* pop, int pop_size)
 }
 
 
-
 void PrintPopulation(const Population* population, int num_cds, int len_amino_seq);
 //void PrintAminoAcids();
 //void CompareCdsToAminoAcids(const char* cds, int num_cds, const int* amino_seq_idx, const char* amino_seq, int len_amino_seq);
 //void CheckMLRCS(const char* s, int size);
 //void CheckMutation(const Population* pop1, const Population* pop2, int num_cds, const int* amino_seq_idx, const char* amino_seq, int len_amino_seq);
+
 
 int main()
 {
@@ -793,7 +790,7 @@ int main()
 	pop = AllocPopulation(colony_size * 2, num_cds, len_amino_seq);
 	int cycle;
 
-	fopen_s(&fp, "sp_result.txt", "w");
+	fopen_s(&fp, "Sp_MOABC.txt", "w");
 	omp_set_num_threads(num_threads);		
 #pragma omp parallel 
 	{
@@ -906,21 +903,12 @@ int main()
 #pragma omp single
 			{
 			SortbyRankCrowding(pop, colony_size * 2, num_cds, len_amino_seq);
+			
 			// non-dominated file update
-			fprintf(fp, "%d cycle\n", cycle + 1);
 			for (int i = 0; i < colony_size; i++) {
 				if (pop[i].rank == 1) {
-					fprintf(fp, "%d colony >>>>> ", i + 1);
-					fprintf(fp, "mCAI : %f, mHD : %f, MLRCS : %f\n", pop[i].sol.obj_val[_mCAI], pop[i].sol.obj_val[_mHD], pop[i].sol.obj_val[_MLRCS]);
-					for (int j = 0; j < num_cds; j++) {
-						fprintf(fp, "%d cds : ", j);
-						for (int k = 0; k < len_amino_seq * 3; k++) {
-							fprintf(fp, "%c", pop[i].sol.cds[j * len_amino_seq * 3 + k]);
-						}
-						fprintf(fp, "\n");
-					}
+					fprintf(fp, "%f %f %f\n", -pop[i].sol.obj_val[_mCAI], -pop[i].sol.obj_val[_mHD] / 0.35, pop[i].sol.obj_val[_MLRCS]);
 				}
-				fprintf(fp, "\n");
 			}
 			}
 		}
@@ -933,6 +921,7 @@ int main()
 	//for (int i = 0; i < colony_size * 2; i++) {
 	//	PrintPopulation(&pop[i], num_cds, len_amino_seq);
 	//}
+
 
 	/* free memory */
 	FreePopulation(pop, colony_size * 2, num_cds);

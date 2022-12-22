@@ -272,7 +272,7 @@ Population* Mutation(const Population* pop, int num_cds, const int* amino_seq_id
 
 	// copy population to new_population
 	CopyPopulation(pop, new_pop, num_cds, len_amino_seq);
-	//new_pop->counter = 0;				
+	new_pop->counter = 0;					// if mutated  counter make zero
 
 
 	/* generate (0 ~ 1) random number corresponding to codon in CDS */
@@ -286,7 +286,6 @@ Population* Mutation(const Population* pop, int num_cds, const int* amino_seq_id
 	int len_cds;
 	type = gen() % 4;
 	len_cds = 3 * len_amino_seq;
-	type = 3;
 	/* four type of variations */
 	switch (type)
 	{
@@ -341,7 +340,6 @@ Population* Mutation(const Population* pop, int num_cds, const int* amino_seq_id
 	return new_pop;
 }
 /* -------------------------------------------------------- end Population creation and mutaion ----------------------------------------------------- */
-
 
 
 /* --------------------------------------------------------- calculate objective function value ----------------------------------------------------- */
@@ -490,7 +488,6 @@ bool ParetoComparison(const Population* new_pop, const Population* old_pop)
 		return false;
 }
 /* ---------------------------------------------------------- end objective function caculation ------------------------------------------------------ */
-
 
 
 #define EMPTY -1
@@ -696,12 +693,12 @@ int SelectSolution(const Population* pop, int pop_size)
 }
 
 
-
 void PrintPopulation(const Population* population, int num_cds, int len_amino_seq);
 //void PrintAminoAcids();
 //void CompareCdsToAminoAcids(const char* cds, int num_cds, const int* amino_seq_idx, const char* amino_seq, int len_amino_seq);
 //void CheckMLRCS(const char* s, int size);
 //void CheckMutation(const Population* pop1, const Population* pop2, int num_cds, const int* amino_seq_idx, const char* amino_seq, int len_amino_seq);
+
 
 int main()
 {
@@ -792,11 +789,11 @@ int main()
 	int cycle;
 
 	Population* new_sol, * sel_sol;
-	Population* tmp_sol;			// for Scout bee step
+	Population* tmp_sol;					// for Scout bee step
 	tmp_sol = AllocPopulation(1, num_cds, len_amino_seq);
 	bool check;
 
-	fopen_s(&fp, "serial_result.txt", "w");
+	fopen_s(&fp, "Serial_MOABC.txt", "w");
 	/* --------------------------------------------------- initialize Population ------------------------------------------------------- */
 	for (int i = 0; i < colony_size; i++)
 	{
