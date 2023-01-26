@@ -703,7 +703,7 @@ void PrintPopulation(const Population* population, int num_cds, int len_amino_se
 int main()
 {
 	/* amino sequence recieve from FASTA format */
-	char file_name[20] = "Q5VZP5.fasta.txt";
+	char file_name[20] = "B7KHU9.fasta.txt";
 	char buffer[256];
 	char* amino_seq;		// amino sequence comprising a CDS
 	int* amino_seq_idx;		// amino sequence corresponding index value to struct 'aa'
@@ -915,9 +915,9 @@ int main()
 
 
 	// Print 
-	//for (int i = 0; i < colony_size * 2; i++) {
-	//	PrintPopulation(&pop[i], num_cds, len_amino_seq);
-	//}	
+	for (int i = 0; i < colony_size * 2; i++) {
+		PrintPopulation(&pop[i], num_cds, len_amino_seq);
+	}	
 
 	/* free memory */
 	FreePopulation(pop, colony_size * 2, num_cds);

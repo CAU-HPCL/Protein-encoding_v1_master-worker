@@ -8,7 +8,7 @@
 // random generator
 std::random_device rd;
 std::knuth_b gen(rd());
-std::uniform_real_distribution<> dist(0, 1);
+std::uniform_real_distribution<> dist(0, 1);			// double 
 
 #define _CRT_SECURE_NO_WARNINGS
 
@@ -364,7 +364,7 @@ void mCAI(Population* pop, int num_cds, const int* amino_seq_idx, int len_amino_
 			tmp *= pow(aa[amino_seq_idx[j]].adaptation[codon_idx], 1.0 / len_amino_seq);
 		}
 		//tmp = pow(tmp, 1.0 / len_amino_seq);
-		if (tmp <= pop->sol.obj_val[_mCAI]) {
+		if ((float)tmp <= pop->sol.obj_val[_mCAI]) {
 			pop->sol.obj_val[_mCAI] = (float)tmp;
 			pop->sol.obj_cdsidx[_mCAI][0] = i;			// CDS's index having mCAI value
 		}
@@ -773,6 +773,7 @@ int main()
 	if (num_cds <= 1) {
 		printf("input number of CDSs > 1\n");
 		return EXIT_FAILURE;
+
 	}
 	printf("input limit value : "); scanf_s("%d", &limit);
 	if (limit <= 0) {
@@ -918,9 +919,9 @@ int main()
 	fclose(fp);
 
 	// Print 
-	//for (int i = 0; i < colony_size * 2; i++) {
-	//	PrintPopulation(&pop[i], num_cds, len_amino_seq);
-	//}
+	for (int i = 0; i < colony_size * 2; i++) {
+		PrintPopulation(&pop[i], num_cds, len_amino_seq);
+	}
 
 
 	/* free memory */

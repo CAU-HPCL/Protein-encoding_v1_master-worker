@@ -1,3 +1,13 @@
+/*
+My NSGA2 algo. is based on Terai et al.
+1. initialize population that are generated randomly
+2. select Population size * crossover mutation probability and binary tournament selction
+3. crossover 
+4. muation
+5. Non-dominated sorting
+*/
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <memory.h>
@@ -65,11 +75,10 @@ typedef struct {
 	float obj_val[OBJECTIVE_NUM];		// objective function value (0 ~ 1) for Pareto Comparsion
 }Solution;
 typedef struct {
-	int counter;						// checking counter to obsolete this solution
 	int rank;							// indicate Pareto front (rank)
 	float crowding_distance;			// indicate diversity of solution in same rank
 	float fitness;						// fitness = 1 / rank
-	float sel_prob;						// selection probability
+	float penalty;						// penalty score is used optimization under constraint
 	Solution sol;
 }Population;
 /* ----------------------------------------------------------- end definition --------------------------------------------------------------------- */
@@ -186,11 +195,10 @@ void GenCDS(char* cds, int num_cds, const int* amino_seq_idx, int len_amino_seq,
 void GenSolution(Population* pop, int num_cds, const int* amino_seq_idx, int len_amino_seq, int type = RANDOM_GEN)
 {
 	/* initial value setting */
-	pop->counter = 0;				// new solution counter value is zero
 	pop->rank = 0;
 	pop->crowding_distance = 0;
 	pop->fitness = 0;
-	pop->sel_prob = 0;
+	pop->penalty = 0;
 
 	/* make random CDSs */
 	GenCDS(pop->sol.cds, num_cds, amino_seq_idx, len_amino_seq, type);
@@ -200,11 +208,10 @@ void GenSolution(Population* pop, int num_cds, const int* amino_seq_idx, int len
 /* this function copy population */
 void CopyPopulation(const Population* origin, Population* target, int num_cds, int len_amino_seq)
 {
-	target->counter = origin->counter;
 	target->rank = origin->rank;
 	target->crowding_distance = origin->crowding_distance;
 	target->fitness = origin->fitness;
-	target->sel_prob = origin->sel_prob;
+	target->penalty = origin->penalty;
 
 	for (int i = 0; i < num_cds * len_amino_seq * 3; i++) {
 		target->sol.cds[i] = origin->sol.cds[i];
@@ -273,7 +280,6 @@ Population* Mutation(const Population* pop, int num_cds, const int* amino_seq_id
 
 	// copy population to new_population
 	CopyPopulation(pop, new_pop, num_cds, len_amino_seq);
-	//new_pop->counter = 0;				
 
 
 	/* generate (0 ~ 1) random number corresponding to codon in CDS */
@@ -664,38 +670,6 @@ void SortbyRankCrowding(Population* pop, int pop_size, int num_cds, int len_amin
 }
 
 
-/* this function caculate selection probability */
-void CalSelectionProb(Population* pop, int pop_size)
-{
-	float sum;
-
-	sum = 0;
-	for (int i = 0; i < pop_size; i++) {
-		sum += pop[i].fitness;
-	}
-	for (int i = 0; i < pop_size; i++) {
-		pop[i].sel_prob = pop[i].fitness / sum;
-	}
-
-	return;
-}
-/* Roulette-wheel selection based on selection probability */
-int SelectSolution(const Population* pop, int pop_size)
-{
-	float sum;
-	float point;
-
-	point = (float)dist(gen);		// 0 ~ 1 floating point number
-
-	sum = 0;
-	for (int i = 0; i < pop_size; i++) {
-		sum += pop[i].sel_prob;
-		if (point < sum)
-			return i;						// return selected pop index
-	}
-}
-
-
 
 void PrintPopulation(const Population* population, int num_cds, int len_amino_seq);
 //void PrintAminoAcids();
@@ -729,7 +703,7 @@ float MinEuclid(float** value, int size)
 int main()
 {
 	/* amino sequence recieve from FASTA format */
-	char file_name[20] = "Q5VZP5.fasta.txt";
+	char file_name[20] = "B7KHU9.fasta.txt";
 	char buffer[256];
 	char* amino_seq;		// amino sequence comprising a CDS
 	int* amino_seq_idx;		// amino sequence corresponding index value to struct 'aa'
@@ -779,8 +753,8 @@ int main()
 	int max_cycle;				// number of generations
 	int colony_size;			// number of solutions in population
 	int num_cds;				// number of CDSs
-	int limit;					// number of solution is not updated
 	float mprob;				// mutation probability
+	float mcross;				// crossover probability
 	int num_threads = 16;
 
 	/* input parameter values */
@@ -797,11 +771,6 @@ int main()
 	printf("input number of CDSs : "); scanf_s("%d", &num_cds);
 	if (num_cds <= 1) {
 		printf("input number of CDSs > 1\n");
-		return EXIT_FAILURE;
-	}
-	printf("input limit value : "); scanf_s("%d", &limit);
-	if (limit <= 0) {
-		printf("input limit value > 0\n");
 		return EXIT_FAILURE;
 	}
 	printf("input mutation probability (0 ~ 1 value) : "); scanf_s("%f", &mprob);
@@ -869,6 +838,7 @@ int main()
 	}
 	/* ----------------------------------------------------- end max cyelce ---------------------------------------------------------------- */
 	
+
 	int size = 0;
 
 
@@ -895,14 +865,14 @@ int main()
 		org[i][_MLRCS] = pop[i].sol.obj_val[_MLRCS];
 	}
 
-	printf("Minimum distance to the ideal point : %f\n", MinEuclid(org, size));
-	printf("size : %d\n", size);
+	//printf("Minimum distance to the ideal point : %f\n", MinEuclid(org, size));
+	//printf("size : %d\n", size);
 
 
 	// Print 
-	//for (int i = 0; i < colony_size * 2; i++) {
-	//	PrintPopulation(&pop[i], num_cds, len_amino_seq);
-	//}
+	for (int i = 0; i < colony_size * 2; i++) {
+		PrintPopulation(&pop[i], num_cds, len_amino_seq);
+	}
 
 
 	/* free memory */
@@ -926,8 +896,8 @@ void PrintPopulation(const Population* population, int num_cds, int len_amino_se
 	printf("\trank : %d\n", population->rank);
 	printf("\tcrowding distance : %f\n", population->crowding_distance);
 	printf("\tfitness : %f\n", population->fitness);
-	printf("\tcounter : %d\n", population->counter);
-	printf("\tselection probabiliy : %f\n", population->sel_prob);
+	printf("\tpenalty score : %f\n : %f\n", population->penalty);
+	
 
 	printf("\tmCAI value : %f\n", population->sol.obj_val[_mCAI]);
 	printf("\tmHD value : %f\n", population->sol.obj_val[_mHD]);
