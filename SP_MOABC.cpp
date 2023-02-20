@@ -2,8 +2,10 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <math.h>
+#include <time.h>
 #include <omp.h>
 #include <random>
+
 
 // random generator
 std::random_device rd;
@@ -749,6 +751,7 @@ int main()
 		amino_seq_idx[i] = FindAminoIndex((AA)amino_seq[i]);
 	}
 	/* -------------------------------------------- end file proess ------------------------------------------------- */
+
 
 	/* user input parameter */
 	int max_cycle;				// number of generations

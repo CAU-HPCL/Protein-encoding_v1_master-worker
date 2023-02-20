@@ -888,11 +888,15 @@ int main()
 	srand(time(NULL));
 
 	/* amino sequence recieve from FASTA format */
-	char file_name[20] = "B7KHU9.fasta.txt";
+	char file_name[20] = "Q89BP2.fasta.txt";
 	char buffer[256];
 	char* amino_seq;		// amino sequence comprising a CDS
 	int* amino_seq_idx;		// amino sequence corresponding index value to struct 'aa'
 	int len_amino_seq;		// length of amino sequence
+
+
+	clock_t start, end;
+	
 
 	/* ---------------------------------------- file processing ------------------------------------------------- */
 	// printf("input file name : );
@@ -988,6 +992,7 @@ int main()
 		int tid;
 		fopen_s(&fp, "Ap_MOABC.txt", "w");
 		omp_set_num_threads(NUM_THREADS);
+		start = clock();
 #pragma omp parallel private(tid)
 		{
 			/* --------------------------------------------------- initialize Population ------------------------------------------------------- */
@@ -1036,7 +1041,9 @@ int main()
 			else
 				WorkerTask(pop, sol_queue, colony_size, limit, mprob, tid, num_cds, amino_seq_idx, len_amino_seq, fp);
 		}
+		end = clock();
 
+		printf("\ntotal time : %lf\n", (double)(end - start)/CLOCKS_PER_SEC);
 
 		//int size;		// store number of pareto optimal solutions eliminating overlapping
 		///* Non dominated file-update */
