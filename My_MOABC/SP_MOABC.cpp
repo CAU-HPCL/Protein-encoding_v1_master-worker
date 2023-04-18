@@ -5,6 +5,7 @@
 #include <time.h>
 #include <omp.h>
 #include <random>
+#include <chrono>
 
 
 // random generator
@@ -696,27 +697,58 @@ int SelectSolution(const Population* pop, int pop_size)
 }
 
 
-void PrintPopulation(const Population* population, int num_cds, int len_amino_seq);
-//void PrintAminoAcids();
-//void CompareCdsToAminoAcids(const char* cds, int num_cds, const int* amino_seq_idx, const char* amino_seq, int len_amino_seq);
-//void CheckMLRCS(const char* s, int size);
-//void CheckMutation(const Population* pop1, const Population* pop2, int num_cds, const int* amino_seq_idx, const char* amino_seq, int len_amino_seq);
-
+#define NUM_THREADS 16
 
 int main()
 {
+	printf("OpenMP max thread : %d\n", omp_get_max_threads());
+	printf("OpenMP current using thread : %d\n", NUM_THREADS);
+	
 	/* amino sequence recieve from FASTA format */
-	char file_name[20] = "B7KHU9.fasta.txt";
+	char file_name[128];
 	char buffer[256];
 	char* amino_seq;		// amino sequence comprising a CDS
 	int* amino_seq_idx;		// amino sequence corresponding index value to struct 'aa'
 	int len_amino_seq;		// length of amino sequence
 
+	int max_cycle;				// number of generations
+	int colony_size;			// number of solutions in population
+	int num_cds;				// number of CDSs
+	int limit;					// number of solution is not updated
+	float mprob;				// mutation probability
+
 	/* ---------------------------------------- file processing ------------------------------------------------- */
-	// printf("input file name : );
-	// scanf_s("%s", &file_name);
+	printf("input file name : ");
+	scanf("%s", &file_name);
+	/* input parameter values */
+	printf("input max cycle value : "); scanf("%d", &max_cycle);
+	if (max_cycle <= 0) {
+		printf("input max cycle value > 0\n");
+		return EXIT_FAILURE;
+	}
+	printf("input colony size : "); scanf("%d", &colony_size);
+	if (colony_size <= 0) {
+		printf("input colony size > 0\n");
+		return EXIT_FAILURE;
+	}
+	printf("input number of CDSs : "); scanf("%d", &num_cds);
+	if (num_cds <= 1) {
+		printf("input number of CDSs > 1\n");
+		return EXIT_FAILURE;
+
+	}
+	printf("input limit value : "); scanf("%d", &limit);
+	if (limit <= 0) {
+		printf("input limit value > 0\n");
+		return EXIT_FAILURE;
+	}
+	printf("input mutation probability (0 ~ 1 value) : "); scanf("%f", &mprob);
+	if (mprob < 0 || mprob > 1) {
+		printf("input mutation probability (0 ~ 1 value) : \n");
+		return EXIT_FAILURE;
+	}
 	FILE* fp;
-	fopen_s(&fp, file_name, "r");
+	fp = fopen(file_name, "r");
 	if (fp == NULL) {
 		printf("Opening input file failed at line : %d", __LINE__);
 		return EXIT_FAILURE;
@@ -752,50 +784,14 @@ int main()
 	}
 	/* -------------------------------------------- end file proess ------------------------------------------------- */
 
-
-	/* user input parameter */
-	int max_cycle;				// number of generations
-	int colony_size;			// number of solutions in population
-	int num_cds;				// number of CDSs
-	int limit;					// number of solution is not updated
-	float mprob;				// mutation probability
-	int num_threads = 16;
-
-	/* input parameter values */
-	printf("input max cycle value : "); scanf_s("%d", &max_cycle);
-	if (max_cycle <= 0) {
-		printf("input max cycle value > 0\n");
-		return EXIT_FAILURE;
-	}
-	printf("input colony size : "); scanf_s("%d", &colony_size);
-	if (colony_size <= 0) {
-		printf("input colony size > 0\n");
-		return EXIT_FAILURE;
-	}
-	printf("input number of CDSs : "); scanf_s("%d", &num_cds);
-	if (num_cds <= 1) {
-		printf("input number of CDSs > 1\n");
-		return EXIT_FAILURE;
-
-	}
-	printf("input limit value : "); scanf_s("%d", &limit);
-	if (limit <= 0) {
-		printf("input limit value > 0\n");
-		return EXIT_FAILURE;
-	}
-	printf("input mutation probability (0 ~ 1 value) : "); scanf_s("%f", &mprob);
-	if (mprob < 0 || mprob > 1) {
-		printf("input mutation probability (0 ~ 1 value) : \n");
-		return EXIT_FAILURE;
-	}
-
+	
 	/* Population memory allocation */
 	Population* pop;
+	float total_time = 0;
 	pop = AllocPopulation(colony_size * 2, num_cds, len_amino_seq);
-	int cycle;
 
-	fopen_s(&fp, "Sp_MOABC.txt", "w");
-	omp_set_num_threads(num_threads);		
+	fp = fopen("Sp_MOABC.txt", "w");
+    std::chrono::system_clock::time_point start = std::chrono::system_clock::now();
 #pragma omp parallel 
 	{
 		Population* new_sol, * sel_sol;
@@ -911,21 +907,20 @@ int main()
 			// non-dominated file update
 			for (int i = 0; i < colony_size; i++) {
 				if (pop[i].rank == 1) {
-					fprintf(fp, "%f %f %f\n", -pop[i].sol.obj_val[_mCAI], -pop[i].sol.obj_val[_mHD] / 0.35, pop[i].sol.obj_val[_MLRCS]);
+					fprintf(fp, "%f %f %f\n", -pop[i].sol.obj_val[_mCAI], -pop[i].sol.obj_val[_mHD] / 0.4, pop[i].sol.obj_val[_MLRCS]);
 				}
 			}
 			}
 		}
 		FreePopulation(tmp_sol, 1, num_cds);
 	}
-	/* ----------------------------------------------------- end max cyelce ---------------------------------------------------------------- */
+	/* ----------------------------------------------------- end max cycle ---------------------------------------------------------------- */
 	fclose(fp);
+    std::chrono::duration<double> sec = std::chrono::system_clock::now() - start;
+    total_time += static_cast<float>(sec.count());
 
-	// Print 
-	for (int i = 0; i < colony_size * 2; i++) {
-		PrintPopulation(&pop[i], num_cds, len_amino_seq);
-	}
 
+	
 
 	/* free memory */
 	FreePopulation(pop, colony_size * 2, num_cds);
@@ -934,218 +929,4 @@ int main()
 
 
 	return EXIT_SUCCESS;
-}
-
-
-
-/* ---------------------------------- For function test -------------------------------------  */
-/* print population's attribute values */
-void PrintPopulation(const Population* population, int num_cds, int len_amino_seq)
-{
-	int idx;
-
-	printf("\n ------------------------------ Print Population ------------------------------ \n ");
-	printf("\trank : %d\n", population->rank);
-	printf("\tcrowding distance : %f\n", population->crowding_distance);
-	printf("\tfitness : %f\n", population->fitness);
-	printf("\tcounter : %d\n", population->counter);
-	printf("\tselection probabiliy : %f\n", population->sel_prob);
-
-	printf("\tmCAI value : %f\n", population->sol.obj_val[_mCAI]);
-	printf("\tmHD value : %f\n", population->sol.obj_val[_mHD]);
-	printf("\tMLRCS value : %f\n", population->sol.obj_val[_MLRCS]);
-
-	idx = 0;
-	for (int i = 0; i < num_cds; i++) {					// population's CDSs loop
-		printf("\nPopulatin's CDS [%d] : \n", i);
-		for (int j = 0; j < len_amino_seq * 3; j++) {
-			printf("%c", population->sol.cds[i * len_amino_seq * 3 + j]);
-		}
-	}
-
-	return;
-}
-/* print Aminoacids definition check */
-void PrintAminoAcids()
-{
-	char file_name[20] = "amino.txt";
-	FILE* fp;
-
-	fopen_s(&fp, file_name, "w");
-	if (fp == NULL) {
-		printf("%s open failure", file_name);
-		return;
-	}
-
-	fprintf(fp, "Aminoacids codon frequency used in out study\n\n");
-	for (int i = 0; i < 20; i++) {
-		fprintf(fp, "-------------- Aminoacid : %c -----------\n", aa[i].name);
-		for (int j = 0; j < aa[i].num_codons; j++) {
-			fprintf(fp, "codon[%d] : %s\tadaptation : %f\n", j + 1, aa[i].codons[j], aa[i].adaptation[j]);
-		}
-		fprintf(fp, "\n");
-	}
-
-	fclose(fp);
-
-	/* console window printing */
-	/*printf("Aminoacids codon frequency used in out study\n");
-	for (int i = 0; i < 20; i++) {
-		printf("-------------- Aminoacid : %c ---------\n", aa[i].name);
-		for (int j = 0; j < aa[i].num_codons; j++) {
-			printf("codon[%d] : %s\tadaptation : %f\n", j + 1, aa[i].codons[j], aa[i].adaptation[j]);
-		}
-		printf("\n");
-	}*/
-
-	return;
-}
-/* cds to amino sequence and comparison */
-void CompareCdsToAminoAcids(const char* cds, int num_cds, const int* amino_seq_idx, const char* amino_seq, int len_amino_seq)
-{
-	char codon[3];
-	char* ch_amino_seq;
-	char* idx_amino_seq;
-	int idx;
-	int c_idx;
-
-	// memory allocation
-	ch_amino_seq = (char*)malloc(sizeof(char) * num_cds * len_amino_seq * 3);
-	idx_amino_seq = (char*)malloc(sizeof(char) * len_amino_seq * 3);
-
-
-	/* -------------------------------------- CDS to Amino ----------------------------------------- */
-	c_idx = 0;
-	for (int i = 0; i < num_cds; i++) {
-		for (int j = 0; j < len_amino_seq; j++) {
-			codon[0] = cds[i * len_amino_seq * 3 + j * 3];
-			codon[1] = cds[i * len_amino_seq * 3 + j * 3 + 1];
-			codon[2] = cds[i * len_amino_seq * 3 + j * 3 + 2];
-			for (int k = 0; k < 20; k++) {
-				for (int l = 0; l < aa[k].num_codons; l++) {
-					if (codon[0] == aa[k].codons[l][0] &&
-						codon[1] == aa[k].codons[l][1] &&
-						codon[2] == aa[k].codons[l][2]) {
-						ch_amino_seq[c_idx++] = (char)aa[k].name;
-						break;
-					}
-				}
-			}
-		}
-	}
-
-	/*for (int i = 0; i < len_amino_seq; i++){
-		printf("%c", ch_amino_seq[i]);
-	}*/
-
-	printf("\nCDS to aminoacids seqeunces comparison ....\n");
-	c_idx = 0;
-	for (int i = 0; i < num_cds; i++) {
-		idx = 0;
-		for (int j = 0; j < len_amino_seq; j++) {
-			if (ch_amino_seq[c_idx++] != amino_seq[idx++]) {
-				printf("Warnings : amino acids sequences are different\n");
-				return;
-			}
-		}
-	}
-	printf("\nCDS to amino seqeunce comparison is compelete !!\n");
-	/* ------------------------------------------------------------------------------------------- */
-
-
-	/* ----------------------------------- amino index to amino ---------------------------------- */
-	idx = 0;
-	for (int i = 0; i < len_amino_seq; i++) {
-		idx_amino_seq[i] = (char)aa[amino_seq_idx[idx++]].name;
-	}
-
-	printf("\nAmino indicies, amino seqeunce compare comparison ....\n");
-	for (int i = 0; i < len_amino_seq; i++) {
-		if (idx_amino_seq[i] != amino_seq[i]) {
-			printf("amino sequences's indices are different\n");
-			return;
-		}
-	}
-	printf("Amino indicies, amino seqeunce compare is compelete !!\n");
-	/* ------------------------------------------------------------------------------------------- */
-
-
-
-	// free memory
-	free(ch_amino_seq);
-	free(idx_amino_seq);
-
-	return;
-}
-
-void CheckMLRCS(const char* s, int size)
-{
-	int p, q, l;
-	int** LCS;
-	int max;
-
-	LCS = (int**)malloc(sizeof(int*) * (size + 1));
-	for (int i = 0; i < size + 1; i++) {
-		LCS[i] = (int*)malloc(sizeof(int) * (size + 1));
-	}
-
-	max = 0;
-	for (int i = 0; i < size + 1; i++) {
-		for (int j = 0; j < size + 1; j++) {
-			if (i == 0 || j == 0 || (i == j)) {
-				LCS[i][j] = 0;
-			}
-			else if (s[i - 1] == s[j - 1]) {
-				LCS[i][j] = LCS[i - 1][j - 1] + 1;
-				if (LCS[i][j] >= max) {
-					max = LCS[i][j];
-					l = max;
-					p = i - max;
-					q = j - max;
-				}
-			}
-			else
-				LCS[i][j] = 0;
-		}
-	}
-
-	for (int i = 0; i < size + 1; i++) {
-		for (int j = 0; j < size + 1; j++) {
-			printf("%d ", LCS[i][j]);
-		}
-		printf("\n");
-	}
-
-	printf("p : %d\n", p);
-	printf("q : %d\n", q);
-	printf("l : %d\n", l);
-
-	for (int i = 0; i < size + 1; i++) {
-		free(LCS[i]);
-	}
-	free(LCS);
-
-	return;
-}
-
-/* original population and muatated population comparison */
-void CheckMutation(const Population* pop1, const Population* pop2, int num_cds, const int* amino_seq_idx, const char* amino_seq, int len_amino_seq)
-{
-	int len_cds;
-
-	printf("CompareCdsToAminoAcids pop1 and pop2 ...\n");
-	CompareCdsToAminoAcids(pop1->sol.cds, num_cds, amino_seq_idx, amino_seq, len_amino_seq);
-	CompareCdsToAminoAcids(pop2->sol.cds, num_cds, amino_seq_idx, amino_seq, len_amino_seq);
-
-	len_cds = len_amino_seq * 3;
-	printf("Check which amino sequneces index are changed ...");
-	for (int i = 0; i < num_cds; i++) {
-		for (int j = 0; j < len_amino_seq; j++) {
-			if (pop1->sol.cds[i * len_cds + j * 3] != pop2->sol.cds[i * len_cds + j * 3] ||
-				pop1->sol.cds[i * len_cds + j * 3 + 1] != pop2->sol.cds[i * len_cds + j * 3 + 1] ||
-				pop1->sol.cds[i * len_cds + j * 3 + 2] != pop2->sol.cds[i * len_cds + j * 3 + 2]) {
-				printf("index : %d is changed\n", i * len_cds + j * 3);
-			}
-		}
-	}
 }

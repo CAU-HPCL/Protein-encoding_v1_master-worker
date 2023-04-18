@@ -1,4 +1,4 @@
-﻿#include <stdio.h> 
+﻿#include <stdio.h>
 #include <stdlib.h>
 #include <memory.h>
 #include <math.h>
@@ -6,30 +6,48 @@
 #include <omp.h>
 #include <queue>
 #include <random>
-
+#include <chrono>
 
 // random generator
 std::random_device rd;
 std::knuth_b gen(rd());
 std::uniform_real_distribution<> dist(0, 1);
 
-
 #define _CRT_SECURE_NO_WARNINGS
 
-
-#define MAX_CODON 6			
+#define MAX_CODON 6
 /* ------------------------------------------------- Amino acids, codons and adaptation weigth definition ---------------------------------------- */
-enum AA {
-	A = 'A', C = 'C', D = 'D', E = 'E', F = 'F', G = 'G', H = 'H', I = 'I', K = 'K', L = 'L',
-	M = 'M', N = 'N', P = 'P', Q = 'Q', R = 'R', S = 'S', T = 'T', V = 'V', W = 'W', Y = 'Y'
+enum AA
+{
+	A = 'A',
+	C = 'C',
+	D = 'D',
+	E = 'E',
+	F = 'F',
+	G = 'G',
+	H = 'H',
+	I = 'I',
+	K = 'K',
+	L = 'L',
+	M = 'M',
+	N = 'N',
+	P = 'P',
+	Q = 'Q',
+	R = 'R',
+	S = 'S',
+	T = 'T',
+	V = 'V',
+	W = 'W',
+	Y = 'Y'
 };
 
-typedef struct {
-	AA name;			 			// amino acid abbreviation
-	int num_codons;					// number of codon types in a amino acid
-	char codons[MAX_CODON][4];		// codons in a amino acid
-	float adaptation[MAX_CODON];	// codons's adaptation weight
-}Aminoacids;
+typedef struct
+{
+	AA name;					 // amino acid abbreviation
+	int num_codons;				 // number of codon types in a amino acid
+	char codons[MAX_CODON][4];	 // codons in a amino acid
+	float adaptation[MAX_CODON]; // codons's adaptation weight
+} Aminoacids;
 /* 20 kinds of amino acids */
 /* adaptation weight is ascending order */
 const Aminoacids aa[20] = {
@@ -37,11 +55,11 @@ const Aminoacids aa[20] = {
 	{C, 2, {"UGC", "UGU"}, {1234 / 3052.0f, 1.0f}},
 	{D, 2, {"GAC", "GAU"}, {8960 / 12731.0f, 1.0f}},
 	{E, 2, {"GAG", "GAA"}, {6172 / 19532.0f, 1.0f}},
-	{F, 2, {"UUU", "UUC"},{7773 / 8251.0f, 1.0f}},
-	{G, 4, {"GGG", "GGA", "GGC", "GGU"},{1852 / 15694.0f, 2781 / 15694.0f, 3600 / 15694.0f, 1.0f}},
+	{F, 2, {"UUU", "UUC"}, {7773 / 8251.0f, 1.0f}},
+	{G, 4, {"GGG", "GGA", "GGC", "GGU"}, {1852 / 15694.0f, 2781 / 15694.0f, 3600 / 15694.0f, 1.0f}},
 	{H, 2, {"CAC", "CAU"}, {3288 / 4320.0f, 1.0f}},
-	{I, 3, {"AUA", "AUC", "AUU"},{3172 / 12071.0f, 8251 / 12071.0f, 1.0f}},
-	{K, 2, {"AAA", "AAG"},{12845 / 15169.0f, 1.0f}},
+	{I, 3, {"AUA", "AUC", "AUU"}, {3172 / 12071.0f, 8251 / 12071.0f, 1.0f}},
+	{K, 2, {"AAA", "AAG"}, {12845 / 15169.0f, 1.0f}},
 	{L, 6, {"CUC", "CUG", "CUU", "CUA", "UUA", "UUG"}, {1242 / 13329.0f, 2852 / 13329.0f, 3207 / 13329.0f, 4134 / 13329.0f, 8549 / 13329.0f, 1.0f}},
 	{M, 1, {"AUG"}, {1.0f}},
 	{N, 2, {"AAU", "AAC"}, {8613 / 9875.0f, 1.0f}},
@@ -52,33 +70,32 @@ const Aminoacids aa[20] = {
 	{T, 4, {"ACG", "ACA", "ACC", "ACU"}, {1938 / 9812.0f, 5037 / 9812.0f, 6660 / 9812.0f, 1.0f}},
 	{V, 4, {"GUA", "GUG", "GUC", "GUU"}, {3249 / 11442.0f, 3700 / 11442.0f, 6911 / 11442.0f, 1.0f}},
 	{W, 1, {"UGG"}, {1.0f}},
-	{Y, 2, {"UAU", "UAC"}, {5768 / 7114.0f, 1.0f}}
-};
+	{Y, 2, {"UAU", "UAC"}, {5768 / 7114.0f, 1.0f}}};
 /* --------------------------------------------------------- end definition ---------------------------------------------------------------------- */
 
-
-#define OBJECTIVE_NUM 3					// three objective function
+#define OBJECTIVE_NUM 3 // three objective function
 #define _mCAI 0
 #define _mHD 1
 #define _MLRCS 2
 /* --------------------------------------------------------- Population definition ---------------------------------------------------------------- */
-typedef struct {
-	char* cds;							// CDSs's sequences
-	int p, q, l;						// this if for MLRCS starting point and length
-	int obj_cdsidx[OBJECTIVE_NUM][2];	// CDS's index correspond to objective function
-	float obj_val[OBJECTIVE_NUM];		// objective function value (0 ~ 1) for Pareto Comparsion
-}Solution;
-typedef struct {
-	int cnt;							// generation count about solution
-	int counter;						// checking counter to obsolete this solution
-	int rank;							// indicate Pareto front (rank)
-	float crowding_distance;			// indicate diversity of solution in same rank
-	float fitness;						// fitness = 1 / rank
-	float sel_prob;						// selection probability
+typedef struct
+{
+	char *cds;						  // CDSs's sequences
+	int p, q, l;					  // this if for MLRCS starting point and length
+	int obj_cdsidx[OBJECTIVE_NUM][2]; // CDS's index correspond to objective function
+	float obj_val[OBJECTIVE_NUM];	  // objective function value (0 ~ 1) for Pareto Comparsion
+} Solution;
+typedef struct
+{
+	int cnt;					 // generation count about solution
+	int counter;			 // checking counter to obsolete this solution
+	int rank;				 // indicate Pareto front (rank)
+	float crowding_distance; // indicate diversity of solution in same rank
+	float fitness;			 // fitness = 1 / rank
+	float sel_prob;			 // selection probability
 	Solution sol;
-}Population;
+} Population;
 /* ----------------------------------------------------------- end definition --------------------------------------------------------------------- */
-
 
 /* ----------------------------------------------------------- Find index definition --------------------------------------------------------------- */
 /* this function find aminoacid index using binary search */
@@ -88,7 +105,8 @@ int FindAminoIndex(const AA aminoacid)
 	int high = 19;
 	int mid;
 
-	while (low <= high) {
+	while (low <= high)
+	{
 		mid = (low + high) / 2;
 
 		if (aa[mid].name == aminoacid)
@@ -98,37 +116,40 @@ int FindAminoIndex(const AA aminoacid)
 		else
 			low = mid + 1;
 	}
-
 }
 /* this function find aminoacid's codon index */
-int FindCodonIndex(int amino_idx, const char* codon)
+int FindCodonIndex(int amino_idx, const char *codon)
 {
-	for (int i = 0; i < aa[amino_idx].num_codons; i++) {
+	for (int i = 0; i < aa[amino_idx].num_codons; i++)
+	{
 		if (aa[amino_idx].codons[i][0] == codon[0] &&
 			aa[amino_idx].codons[i][1] == codon[1] &&
-			aa[amino_idx].codons[i][2] == codon[2]) {
+			aa[amino_idx].codons[i][2] == codon[2])
+		{
 			return i;
 		}
 	}
 }
 /* --------------------------------------------------------------- end definition ------------------------------------------------------------------ */
 
-
 /* ---------------------------------------------------------- Population memroy management --------------------------------------------------------- */
 /* this function memory allocation population */
-Population* AllocPopulation(int pop_size, int num_cds, int len_amino_seq)
+Population *AllocPopulation(int pop_size, int num_cds, int len_amino_seq)
 {
-	Population* pop;
+	Population *pop;
 
-	pop = (Population*)malloc(sizeof(Population) * pop_size);
-	if (pop == NULL) {
+	pop = (Population *)malloc(sizeof(Population) * pop_size);
+	if (pop == NULL)
+	{
 		printf("Memory allocation failed at line %d\n", __LINE__);
 		exit(EXIT_FAILURE);
 	}
 
-	for (int i = 0; i < pop_size; i++) {
-		pop[i].sol.cds = (char*)malloc(sizeof(char) * num_cds * len_amino_seq * 3);
-		if (pop[i].sol.cds == NULL) {
+	for (int i = 0; i < pop_size; i++)
+	{
+		pop[i].sol.cds = (char *)malloc(sizeof(char) * num_cds * len_amino_seq * 3);
+		if (pop[i].sol.cds == NULL)
+		{
 			printf("Memory allocation failed at line %d\n", __LINE__);
 			exit(EXIT_FAILURE);
 		}
@@ -137,9 +158,10 @@ Population* AllocPopulation(int pop_size, int num_cds, int len_amino_seq)
 	return pop;
 }
 /* this function free population memory */
-void FreePopulation(Population* pop, int pop_size, int num_cds)
+void FreePopulation(Population *pop, int pop_size, int num_cds)
 {
-	for (int i = 0; i < pop_size; i++) {
+	for (int i = 0; i < pop_size; i++)
+	{
 		free(pop[i].sol.cds);
 	}
 	free(pop);
@@ -148,23 +170,25 @@ void FreePopulation(Population* pop, int pop_size, int num_cds)
 }
 /* ---------------------------------------------------------- end memory management ---------------------------------------------------------------- */
 
-
 /* ------------------------------------------------------- make Population and mutate Population fucntions ----------------------------------------- */
 #define RANDOM_GEN 0
 #define UPPER_GEN 1
 /* this function make random CDS */
-void GenCDS(char* cds, int num_cds, const int* amino_seq_idx, int len_amino_seq, int type = RANDOM_GEN)
+void GenCDS(char *cds, int num_cds, const int *amino_seq_idx, int len_amino_seq, int type = RANDOM_GEN)
 {
 	int idx;
 	int rand_idx;
 	int codon_idx;
 
 	idx = 0;
-	switch (type) {
+	switch (type)
+	{
 		/* random creation */
 	case RANDOM_GEN:
-		for (int i = 0; i < num_cds; i++) {
-			for (int j = 0; j < len_amino_seq; j++) {
+		for (int i = 0; i < num_cds; i++)
+		{
+			for (int j = 0; j < len_amino_seq; j++)
+			{
 				rand_idx = gen() % aa[amino_seq_idx[j]].num_codons;
 				cds[idx++] = aa[amino_seq_idx[j]].codons[rand_idx][0];
 				cds[idx++] = aa[amino_seq_idx[j]].codons[rand_idx][1];
@@ -174,8 +198,10 @@ void GenCDS(char* cds, int num_cds, const int* amino_seq_idx, int len_amino_seq,
 		break;
 		/* creation maximum CAI values */
 	case UPPER_GEN:
-		for (int i = 0; i < num_cds; i++) {
-			for (int j = 0; j < len_amino_seq; j++) {
+		for (int i = 0; i < num_cds; i++)
+		{
+			for (int j = 0; j < len_amino_seq; j++)
+			{
 				codon_idx = aa[amino_seq_idx[j]].num_codons - 1;
 				cds[idx++] = aa[amino_seq_idx[j]].codons[codon_idx][0];
 				cds[idx++] = aa[amino_seq_idx[j]].codons[codon_idx][1];
@@ -188,10 +214,10 @@ void GenCDS(char* cds, int num_cds, const int* amino_seq_idx, int len_amino_seq,
 	return;
 }
 /* this function generate random solution */
-void GenSolution(Population* pop, int num_cds, const int* amino_seq_idx, int len_amino_seq, int type = RANDOM_GEN)
+void GenSolution(Population *pop, int num_cds, const int *amino_seq_idx, int len_amino_seq, int type = RANDOM_GEN)
 {
 	/* initial value setting */
-	pop->counter = 0;				// new solution counter value is zero
+	pop->counter = 0; // new solution counter value is zero
 	pop->rank = 0;
 	pop->crowding_distance = 0;
 	pop->fitness = 0;
@@ -203,7 +229,7 @@ void GenSolution(Population* pop, int num_cds, const int* amino_seq_idx, int len
 	return;
 }
 /* this function copy population */
-void CopyPopulation(const Population* origin, Population* target, int num_cds, int len_amino_seq)
+void CopyPopulation(const Population *origin, Population *target, int num_cds, int len_amino_seq)
 {
 	target->counter = origin->counter;
 	target->rank = origin->rank;
@@ -212,11 +238,13 @@ void CopyPopulation(const Population* origin, Population* target, int num_cds, i
 	target->sel_prob = origin->sel_prob;
 	target->cnt = origin->cnt;
 
-	for (int i = 0; i < num_cds * len_amino_seq * 3; i++) {
+	for (int i = 0; i < num_cds * len_amino_seq * 3; i++)
+	{
 		target->sol.cds[i] = origin->sol.cds[i];
 	}
 
-	for (int i = 0; i < OBJECTIVE_NUM; i++) {
+	for (int i = 0; i < OBJECTIVE_NUM; i++)
+	{
 		target->sol.obj_val[i] = origin->sol.obj_val[i];
 		target->sol.obj_cdsidx[i][0] = origin->sol.obj_cdsidx[i][0];
 		target->sol.obj_cdsidx[i][1] = origin->sol.obj_cdsidx[i][1];
@@ -228,11 +256,10 @@ void CopyPopulation(const Population* origin, Population* target, int num_cds, i
 	return;
 }
 
-
 #define RANDOM_ADAPTATION 0
 #define UPPER_ADAPTATION 1
 /* this function change codon into synonymous codon which is not same input codon excluding  number of synonymous codons is one */
-void ChageSynonymousCodon(int amino_idx, char* cds, int cd_idx, int type)
+void ChageSynonymousCodon(int amino_idx, char *cds, int cd_idx, int type)
 {
 	char codon[3];
 	int idx;
@@ -245,9 +272,11 @@ void ChageSynonymousCodon(int amino_idx, char* cds, int cd_idx, int type)
 
 	switch (type)
 	{
-	case RANDOM_ADAPTATION:			// change random synomynous codon
-		if (aa[amino_idx].num_codons > 1) {
-			while (true) {
+	case RANDOM_ADAPTATION: // change random synomynous codon
+		if (aa[amino_idx].num_codons > 1)
+		{
+			while (true)
+			{
 				rand_idx = gen() % aa[amino_idx].num_codons;
 				if (idx != rand_idx)
 					break;
@@ -257,8 +286,9 @@ void ChageSynonymousCodon(int amino_idx, char* cds, int cd_idx, int type)
 			cds[cd_idx + 2] = aa[amino_idx].codons[rand_idx][2];
 		}
 		break;
-	case UPPER_ADAPTATION:			// change random synomynous codon which has high adaptation value
-		if (idx < aa[amino_idx].num_codons - 1) {
+	case UPPER_ADAPTATION: // change random synomynous codon which has high adaptation value
+		if (idx < aa[amino_idx].num_codons - 1)
+		{
 			rand_idx = idx + gen() % (aa[amino_idx].num_codons - 1 - idx) + 1;
 			cds[cd_idx] = aa[amino_idx].codons[rand_idx][0];
 			cds[cd_idx + 1] = aa[amino_idx].codons[rand_idx][1];
@@ -270,24 +300,23 @@ void ChageSynonymousCodon(int amino_idx, char* cds, int cd_idx, int type)
 	return;
 }
 /* this function generate random mutated solution */
-Population* Mutation(const Population* pop, int num_cds, const int* amino_seq_idx, int len_amino_seq, float mprob)
+Population *Mutation(const Population *pop, int num_cds, const int *amino_seq_idx, int len_amino_seq, float mprob)
 {
 	/* new population memory allocation */
-	Population* new_pop;
+	Population *new_pop;
 	new_pop = AllocPopulation(1, num_cds, len_amino_seq);
 
 	// copy population to new_population
 	CopyPopulation(pop, new_pop, num_cds, len_amino_seq);
 	new_pop->counter = 0;
 
-
 	/* generate (0 ~ 1) random number corresponding to codon in CDS */
-	float* random_num;
-	random_num = (float*)malloc(sizeof(float) * num_cds * len_amino_seq);
-	for (int i = 0; i < num_cds * len_amino_seq; i++) {
+	float *random_num;
+	random_num = (float *)malloc(sizeof(float) * num_cds * len_amino_seq);
+	for (int i = 0; i < num_cds * len_amino_seq; i++)
+	{
 		random_num[i] = (float)dist(gen);
 	}
-
 
 	int type;
 	int len_cds;
@@ -298,9 +327,12 @@ Population* Mutation(const Population* pop, int num_cds, const int* amino_seq_id
 	{
 		/* change each codons with random codon in all CDSs */
 	case 0:
-		for (int i = 0; i < num_cds; i++) {
-			for (int j = 0; j < len_amino_seq; j++) {
-				if (random_num[i * len_amino_seq + j] < mprob) {
+		for (int i = 0; i < num_cds; i++)
+		{
+			for (int j = 0; j < len_amino_seq; j++)
+			{
+				if (random_num[i * len_amino_seq + j] < mprob)
+				{
 					ChageSynonymousCodon(amino_seq_idx[j], new_pop->sol.cds, i * len_cds + j * 3, RANDOM_ADAPTATION);
 				}
 			}
@@ -308,32 +340,41 @@ Population* Mutation(const Population* pop, int num_cds, const int* amino_seq_id
 		break;
 		/* change each codons with higher adaptation value in CDS which have minimun CAI value */
 	case 1:
-		for (int i = 0; i < len_amino_seq; i++) {
-			if (random_num[new_pop->sol.obj_cdsidx[_mCAI][0] * len_amino_seq + i] < mprob) {
+		for (int i = 0; i < len_amino_seq; i++)
+		{
+			if (random_num[new_pop->sol.obj_cdsidx[_mCAI][0] * len_amino_seq + i] < mprob)
+			{
 				ChageSynonymousCodon(amino_seq_idx[i], new_pop->sol.cds, new_pop->sol.obj_cdsidx[_mCAI][0] * len_cds + i * 3, UPPER_ADAPTATION);
 			}
 		}
 		break;
 		/* change each codons with random codon in pair of CDSs with minimun Hamming Distance */
 	case 2:
-		for (int i = 0; i < len_amino_seq; i++) {
-			if (random_num[new_pop->sol.obj_cdsidx[_mHD][0] * len_amino_seq + i] < mprob) {
+		for (int i = 0; i < len_amino_seq; i++)
+		{
+			if (random_num[new_pop->sol.obj_cdsidx[_mHD][0] * len_amino_seq + i] < mprob)
+			{
 				ChageSynonymousCodon(amino_seq_idx[i], new_pop->sol.cds, new_pop->sol.obj_cdsidx[_mHD][0] * len_cds + i * 3, RANDOM_ADAPTATION);
 			}
-			if (random_num[new_pop->sol.obj_cdsidx[_mHD][1] * len_amino_seq + i] < mprob) {
+			if (random_num[new_pop->sol.obj_cdsidx[_mHD][1] * len_amino_seq + i] < mprob)
+			{
 				ChageSynonymousCodon(amino_seq_idx[i], new_pop->sol.cds, new_pop->sol.obj_cdsidx[_mHD][1] * len_cds + i * 3, RANDOM_ADAPTATION);
 			}
 		}
 		break;
 		/* chage each codons with random codon in CDSs with longest common substring */
 	case 3:
-		for (int i = (new_pop->sol.p - new_pop->sol.obj_cdsidx[_MLRCS][0] * len_cds) / 3; i <= (new_pop->sol.p + new_pop->sol.l - 1 - new_pop->sol.obj_cdsidx[_MLRCS][0] * len_cds) / 3; i++) {
-			if (random_num[new_pop->sol.obj_cdsidx[_MLRCS][0] * len_amino_seq + i] < mprob) {
+		for (int i = (new_pop->sol.p - new_pop->sol.obj_cdsidx[_MLRCS][0] * len_cds) / 3; i <= (new_pop->sol.p + new_pop->sol.l - 1 - new_pop->sol.obj_cdsidx[_MLRCS][0] * len_cds) / 3; i++)
+		{
+			if (random_num[new_pop->sol.obj_cdsidx[_MLRCS][0] * len_amino_seq + i] < mprob)
+			{
 				ChageSynonymousCodon(amino_seq_idx[i], new_pop->sol.cds, new_pop->sol.obj_cdsidx[_MLRCS][0] * len_cds + i * 3, RANDOM_ADAPTATION);
 			}
 		}
-		for (int i = (new_pop->sol.q - new_pop->sol.obj_cdsidx[_MLRCS][1] * len_cds) / 3; i <= (new_pop->sol.q + new_pop->sol.l - 1 - new_pop->sol.obj_cdsidx[_MLRCS][1] * len_cds) / 3; i++) {
-			if (random_num[new_pop->sol.obj_cdsidx[_MLRCS][1] * len_amino_seq + i] < mprob) {
+		for (int i = (new_pop->sol.q - new_pop->sol.obj_cdsidx[_MLRCS][1] * len_cds) / 3; i <= (new_pop->sol.q + new_pop->sol.l - 1 - new_pop->sol.obj_cdsidx[_MLRCS][1] * len_cds) / 3; i++)
+		{
+			if (random_num[new_pop->sol.obj_cdsidx[_MLRCS][1] * len_amino_seq + i] < mprob)
+			{
 				ChageSynonymousCodon(amino_seq_idx[i], new_pop->sol.cds, new_pop->sol.obj_cdsidx[_MLRCS][1] * len_cds + i * 3, RANDOM_ADAPTATION);
 			}
 		}
@@ -343,15 +384,13 @@ Population* Mutation(const Population* pop, int num_cds, const int* amino_seq_id
 	/* free memory */
 	free(random_num);
 
-
 	return new_pop;
 }
 /* -------------------------------------------------------- end Population creation and mutaion ----------------------------------------------------- */
 
-
 /* --------------------------------------------------------- calculate objective function value ----------------------------------------------------- */
 /* this function is calculate mininum CAI value and store cds index */
-void mCAI(Population* pop, int num_cds, const int* amino_seq_idx, int len_amino_seq)
+void mCAI(Population *pop, int num_cds, const int *amino_seq_idx, int len_amino_seq)
 {
 	char codon[3];
 	int idx;
@@ -360,26 +399,29 @@ void mCAI(Population* pop, int num_cds, const int* amino_seq_idx, int len_amino_
 
 	idx = 0;
 	pop->sol.obj_val[_mCAI] = 1;
-	for (int i = 0; i < num_cds; i++) {
+	for (int i = 0; i < num_cds; i++)
+	{
 		tmp = 1;
-		for (int j = 0; j < len_amino_seq; j++) {
+		for (int j = 0; j < len_amino_seq; j++)
+		{
 			codon[0] = pop->sol.cds[idx++];
 			codon[1] = pop->sol.cds[idx++];
 			codon[2] = pop->sol.cds[idx++];
 			codon_idx = FindCodonIndex(amino_seq_idx[j], codon);
 			tmp *= pow(aa[amino_seq_idx[j]].adaptation[codon_idx], 1.0 / len_amino_seq);
 		}
-		//tmp = pow(tmp, 1.0 / len_amino_seq);
-		if (tmp <= pop->sol.obj_val[_mCAI]) {
+		// tmp = pow(tmp, 1.0 / len_amino_seq);
+		if (tmp <= pop->sol.obj_val[_mCAI])
+		{
 			pop->sol.obj_val[_mCAI] = (float)tmp;
-			pop->sol.obj_cdsidx[_mCAI][0] = i;			// CDS's index having mCAI value
+			pop->sol.obj_cdsidx[_mCAI][0] = i; // CDS's index having mCAI value
 		}
 	}
 
 	return;
 }
 /* this function is calculate minimum Hamming Distance */
-void mHD(Population* pop, int num_cds, int len_amino_seq)
+void mHD(Population *pop, int num_cds, int len_amino_seq)
 {
 	int len_cds = len_amino_seq * 3;
 	int cnt;
@@ -397,7 +439,8 @@ void mHD(Population* pop, int num_cds, int len_amino_seq)
 					cnt++;
 			}
 			tmp = (float)cnt / len_cds;
-			if (tmp <= pop->sol.obj_val[_mHD]) {
+			if (tmp <= pop->sol.obj_val[_mHD])
+			{
 				pop->sol.obj_val[_mHD] = tmp;
 				pop->sol.obj_cdsidx[_mHD][0] = i;
 				pop->sol.obj_cdsidx[_mHD][1] = j;
@@ -408,25 +451,30 @@ void mHD(Population* pop, int num_cds, int len_amino_seq)
 	return;
 }
 /* this function calculate maximun length of common substring */
-void MLRCS(Population* pop, int num_cds, int len_amino_seq)
+void MLRCS(Population *pop, int num_cds, int len_amino_seq)
 {
-	int** LCS;						// matrix which size [length of CDS + 1][length of CDS + 1]
+	int **LCS; // matrix which size [length of CDS + 1][length of CDS + 1]
 	int len_cds = 3 * len_amino_seq;
 	int max_len;
 
-
 	/* memory allocation for LCS matrix */
-	LCS = (int**)malloc(sizeof(int*) * (len_cds + 1));
-	for (int i = 0; i < len_cds + 1; i++) {
-		LCS[i] = (int*)malloc(sizeof(int) * (len_cds + 1));
+	LCS = (int **)malloc(sizeof(int *) * (len_cds + 1));
+	for (int i = 0; i < len_cds + 1; i++)
+	{
+		LCS[i] = (int *)malloc(sizeof(int) * (len_cds + 1));
 	}
 
 	max_len = 0;
-	for (int i = 0; i < num_cds; i++) {							// i'th CDS
-		for (int j = i; j < num_cds; j++) {						// j'th CDS
-			for (int k = 0; k < len_cds + 1; k++) {				// matrix row
-				for (int l = 0; l < len_cds + 1; l++) {			// matrix column
-					if (i != j) {
+	for (int i = 0; i < num_cds; i++)
+	{ // i'th CDS
+		for (int j = i; j < num_cds; j++)
+		{ // j'th CDS
+			for (int k = 0; k < len_cds + 1; k++)
+			{ // matrix row
+				for (int l = 0; l < len_cds + 1; l++)
+				{ // matrix column
+					if (i != j)
+					{
 						if (k == 0 || l == 0)
 							LCS[k][l] = 0;
 						else if (pop->sol.cds[i * len_cds + k - 1] == pop->sol.cds[j * len_cds + l - 1])
@@ -472,7 +520,8 @@ void MLRCS(Population* pop, int num_cds, int len_amino_seq)
 	pop->sol.obj_val[_MLRCS] = (float)max_len / len_cds;
 
 	/* free memory LCS matrix */
-	for (int i = 0; i < len_cds + 1; i++) {
+	for (int i = 0; i < len_cds + 1; i++)
+	{
 		free(LCS[i]);
 	}
 	free(LCS);
@@ -480,47 +529,46 @@ void MLRCS(Population* pop, int num_cds, int len_amino_seq)
 	return;
 }
 /* If new population dominate old population return true */
-bool ParetoComparison(const Population* new_pop, const Population* old_pop)
+bool ParetoComparison(const Population *new_pop, const Population *old_pop)
 {
 	if ((new_pop->sol.obj_val[_mCAI] == old_pop->sol.obj_val[_mCAI]) &&
 		(new_pop->sol.obj_val[_mHD] == old_pop->sol.obj_val[_mHD]) &&
 		(new_pop->sol.obj_val[_MLRCS] == old_pop->sol.obj_val[_MLRCS]))
 		return false;
 	else if ((new_pop->sol.obj_val[_mCAI] >= old_pop->sol.obj_val[_mCAI]) &&
-		(new_pop->sol.obj_val[_mHD] >= old_pop->sol.obj_val[_mHD]) &&
-		(new_pop->sol.obj_val[_MLRCS] <= old_pop->sol.obj_val[_MLRCS]))
+			 (new_pop->sol.obj_val[_mHD] >= old_pop->sol.obj_val[_mHD]) &&
+			 (new_pop->sol.obj_val[_MLRCS] <= old_pop->sol.obj_val[_MLRCS]))
 		return true;
 	else
 		return false;
 }
 /* ---------------------------------------------------------- end objective function caculation ------------------------------------------------------ */
 
-
 #define EMPTY -1
 /* this function sorting by rank and crowding distance */
-void SortbyRankCrowding(Population* pop, int pop_size, int num_cds, int len_amino_seq)
+void SortbyRankCrowding(Population *pop, int pop_size, int num_cds, int len_amino_seq)
 {
 	/* this point out population index value */
-	int** Sp, ** F;
-	int* np, * Q;
+	int **Sp, **F;
+	int *np, *Q;
 	int Sp_idx, F_front, F_idx, Q_idx;
 
 	/* memory allocation */
-	Sp = (int**)malloc(sizeof(int*) * pop_size);
-	F = (int**)malloc(sizeof(int*) * pop_size);
-	for (int i = 0; i < pop_size; i++) {
-		Sp[i] = (int*)malloc(sizeof(int) * pop_size);
-		F[i] = (int*)malloc(sizeof(int) * pop_size);
+	Sp = (int **)malloc(sizeof(int *) * pop_size);
+	F = (int **)malloc(sizeof(int *) * pop_size);
+	for (int i = 0; i < pop_size; i++)
+	{
+		Sp[i] = (int *)malloc(sizeof(int) * pop_size);
+		F[i] = (int *)malloc(sizeof(int) * pop_size);
 	}
-	np = (int*)malloc(sizeof(int) * pop_size);
-	Q = (int*)malloc(sizeof(int) * pop_size);
-
+	np = (int *)malloc(sizeof(int) * pop_size);
+	Q = (int *)malloc(sizeof(int) * pop_size);
 
 	// F empty initialization
-	for (int i = 0; i < pop_size; i++) {
+	for (int i = 0; i < pop_size; i++)
+	{
 		memset(F[i], EMPTY, sizeof(int) * pop_size);
 	}
-
 
 	/* ------------------------------------------------- fast non-dominated sort -------------------------------------------- */
 	F_idx = 0;
@@ -531,30 +579,34 @@ void SortbyRankCrowding(Population* pop, int pop_size, int num_cds, int len_amin
 		memset(Sp[i], EMPTY, sizeof(int) * pop_size);
 		for (int j = 0; j < pop_size; j++)
 		{
-			if (i != j) {
+			if (i != j)
+			{
 				if (ParetoComparison(&pop[i], &pop[j]))
 					Sp[i][Sp_idx++] = j;
 				else if (ParetoComparison(&pop[j], &pop[i]))
 					np[i] += 1;
 			}
 		}
-		if (np[i] == 0) {
+		if (np[i] == 0)
+		{
 			pop[i].rank = 1;
 			F[0][F_idx++] = i;
 		}
 	}
 	/* -------------- 1st front setting complete ---------------- */
 
-	int p;						// indicate which p solution's Sp		p value means n'th Pareto Front solution
-	F_front = 0;				// indicate 1st front
+	int p;		 // indicate which p solution's Sp		p value means n'th Pareto Front solution
+	F_front = 0; // indicate 1st front
 	F_idx = 0;
 	while (F[F_front][F_idx] != EMPTY)
 	{
 		Q_idx = 0;
 		memset(Q, EMPTY, sizeof(int) * pop_size);
-		for (F_idx = 0; F_idx < pop_size && F[F_front][F_idx] != EMPTY; F_idx++) {					// F[F_front][F_idx] == population index
+		for (F_idx = 0; F_idx < pop_size && F[F_front][F_idx] != EMPTY; F_idx++)
+		{ // F[F_front][F_idx] == population index
 			p = F[F_front][F_idx];
-			for (Sp_idx = 0; Sp_idx < pop_size && Sp[p][Sp_idx] != EMPTY; Sp_idx++) {
+			for (Sp_idx = 0; Sp_idx < pop_size && Sp[p][Sp_idx] != EMPTY; Sp_idx++)
+			{
 				np[Sp[p][Sp_idx]]--;
 				if (np[Sp[p][Sp_idx]] == 0)
 				{
@@ -569,7 +621,8 @@ void SortbyRankCrowding(Population* pop, int pop_size, int num_cds, int len_amin
 			break;
 		F_idx = 0;
 		Q_idx = 0;
-		while (Q[Q_idx] != EMPTY) {
+		while (Q[Q_idx] != EMPTY)
+		{
 			F[F_front][Q_idx] = Q[Q_idx];
 			Q_idx++;
 			if (Q_idx >= pop_size)
@@ -578,24 +631,27 @@ void SortbyRankCrowding(Population* pop, int pop_size, int num_cds, int len_amin
 	}
 	/* ------------------------------------------------- end non dominated sort -------------------------------------------------- */
 
-
 	/* ------------------------------------------------- crowding distance assignment -------------------------------------------- */
 	int p_len;
 	int tmp;
 	F_front = 0;
 	while (F[F_front][0] != EMPTY)
 	{
-		p_len = 0;							// number of solutions in pareto rank
-		for (F_idx = 0; F_idx < pop_size && F[F_front][F_idx] != EMPTY; F_idx++) {
+		p_len = 0; // number of solutions in pareto rank
+		for (F_idx = 0; F_idx < pop_size && F[F_front][F_idx] != EMPTY; F_idx++)
+		{
 			pop[F[F_front][F_idx]].crowding_distance = 0;
 			p_len++;
 		}
 		for (int i = 0; i < OBJECTIVE_NUM; i++)
 		{
 			// sort each objective function ascending order
-			for (int j = 0; j < p_len; j++) {
-				for (int k = 0; k < p_len - 1 - j; k++) {
-					if (pop[F[F_front][k]].sol.obj_val[i] > pop[F[F_front][k + 1]].sol.obj_val[i]) {
+			for (int j = 0; j < p_len; j++)
+			{
+				for (int k = 0; k < p_len - 1 - j; k++)
+				{
+					if (pop[F[F_front][k]].sol.obj_val[i] > pop[F[F_front][k + 1]].sol.obj_val[i])
+					{
 						tmp = F[F_front][k];
 						F[F_front][k] = F[F_front][k + 1];
 						F[F_front][k + 1] = tmp;
@@ -610,9 +666,12 @@ void SortbyRankCrowding(Population* pop, int pop_size, int num_cds, int len_amin
 				pop[F[F_front][j]].crowding_distance += (pop[F[F_front][j + 1]].sol.obj_val[i] - pop[F[F_front][j - 1]].sol.obj_val[i]) / (1 - 0);
 		}
 
-		for (int j = 0; j < p_len; j++) {
-			for (int k = 0; k < p_len - 1 - j; k++) {
-				if (pop[F[F_front][k]].crowding_distance < pop[F[F_front][k + 1]].crowding_distance) {
+		for (int j = 0; j < p_len; j++)
+		{
+			for (int k = 0; k < p_len - 1 - j; k++)
+			{
+				if (pop[F[F_front][k]].crowding_distance < pop[F[F_front][k + 1]].crowding_distance)
+				{
 					tmp = F[F_front][k];
 					F[F_front][k] = F[F_front][k + 1];
 					F[F_front][k + 1] = tmp;
@@ -626,9 +685,10 @@ void SortbyRankCrowding(Population* pop, int pop_size, int num_cds, int len_amin
 	}
 	/* ------------------------------------------------ end crowding distance assignment -------------------------------------------- */
 
-	Population* tmp_pop;
+	Population *tmp_pop;
 	tmp_pop = AllocPopulation(pop_size, num_cds, len_amino_seq);
-	for (int i = 0; i < pop_size; i++) {
+	for (int i = 0; i < pop_size; i++)
+	{
 		CopyPopulation(&pop[i], &tmp_pop[i], num_cds, len_amino_seq);
 	}
 	F_front = 0;
@@ -639,22 +699,23 @@ void SortbyRankCrowding(Population* pop, int pop_size, int num_cds, int len_amin
 		CopyPopulation(&tmp_pop[F[F_front][F_idx]], &pop[p_idx], num_cds, len_amino_seq);
 		p_idx++;
 		F_idx++;
-		if (F_idx == pop_size || F[F_front][F_idx] == EMPTY) {
+		if (F_idx == pop_size || F[F_front][F_idx] == EMPTY)
+		{
 			F_front++;
 			F_idx = 0;
 		}
 	}
 
-
-	// allocate fitness value 
-	for (int i = 0; i < pop_size; i++) {
+	// allocate fitness value
+	for (int i = 0; i < pop_size; i++)
+	{
 		pop[i].fitness = 1.f / pop[i].rank;
 	}
 
-
 	/* free memory */
 	FreePopulation(tmp_pop, pop_size, num_cds);
-	for (int i = 0; i < pop_size; i++) {
+	for (int i = 0; i < pop_size; i++)
+	{
 		free(Sp[i]);
 		free(F[i]);
 	}
@@ -666,80 +727,82 @@ void SortbyRankCrowding(Population* pop, int pop_size, int num_cds, int len_amin
 	return;
 }
 
-
-
 /* this function caculate selection probability */
-void CalSelectionProb(Population* pop, int pop_size)
+void CalSelectionProb(Population *pop, int pop_size)
 {
 	float sum;
 
 	sum = 0;
-	for (int i = 0; i < pop_size; i++) {
+	for (int i = 0; i < pop_size; i++)
+	{
 		sum += pop[i].fitness;
 	}
-	for (int i = 0; i < pop_size; i++) {
+	for (int i = 0; i < pop_size; i++)
+	{
 		pop[i].sel_prob = pop[i].fitness / sum;
 	}
 
 	return;
 }
 /* Roulette-wheel selection based on selection probability */
-int SelectSolution(const Population* pop, int pop_size)
+int SelectSolution(const Population *pop, int pop_size)
 {
 	float sum;
 	float point;
 
-	point = (float)dist(gen);		// 0 ~ 1 floating point number
+	point = (float)dist(gen); // 0 ~ 1 floating point number
 
 	sum = 0;
-	for (int i = 0; i < pop_size; i++) {
+	for (int i = 0; i < pop_size; i++)
+	{
 		sum += pop[i].sel_prob;
 		if (point < sum)
-			return i;						// return selected pop index
+			return i; // return selected pop index
 	}
 }
 
-
-void PrintPopulation(const Population* population, int num_cds, int len_amino_seq);
-//void PrintAminoAcids();
-//void CompareCdsToAminoAcids(const char* cds, int num_cds, const int* amino_seq_idx, const char* amino_seq, int len_amino_seq);
-//void CheckMLRCS(const char* s, int size);
-//void CheckMutation(const Population* pop1, const Population* pop2, int num_cds, const int* amino_seq_idx, const char* amino_seq, int len_amino_seq);
-
+void PrintPopulation(const Population *population, int num_cds, int len_amino_seq);
+// void PrintAminoAcids();
+// void CompareCdsToAminoAcids(const char* cds, int num_cds, const int* amino_seq_idx, const char* amino_seq, int len_amino_seq);
+// void CheckMLRCS(const char* s, int size);
+// void CheckMutation(const Population* pop1, const Population* pop2, int num_cds, const int* amino_seq_idx, const char* amino_seq, int len_amino_seq);
 
 typedef struct Sol
 {
 	int pos;
-	Population* pop;
-}Sol;
+	Population *pop;
+} Sol;
 /* global variable initialize */
 #define NUM_THREADS 16
 bool stop = false;
 
 /* ------------------------------- Master thread function definition ------------------------------------*/
-void MasterTask(Population* pop, Population* sw_pop, std::queue<Sol>* sol_queue, int colony_size, int max_eval, int num_cds, int len_amino_seq)
+void MasterTask(Population *pop, Population *sw_pop, std::queue<Sol> *sol_queue, int colony_size, int max_eval, int num_cds, int len_amino_seq)
 {
 	int eval;
 	bool update;
-	Population* tmp;
+	Population *tmp;
 	Sol s_tmp;
 
 	eval = 0;
 	while (eval < max_eval)
 	{
 		update = false;
-		for (int i = 0; i < NUM_THREADS - 1; i++) {
-			while (!sol_queue[i].empty() && eval < max_eval) {
+		for (int i = 0; i < NUM_THREADS - 1; i++)
+		{
+			while (!sol_queue[i].empty() && eval < max_eval)
+			{
 				s_tmp = sol_queue[i].front();
 				sol_queue[i].pop();
 				CopyPopulation(s_tmp.pop, &sw_pop[s_tmp.pos], num_cds, len_amino_seq);
-				//FreePopulation(s_tmp.pop, 1, num_cds);
+				// FreePopulation(s_tmp.pop, 1, num_cds);
 				update = true;
 				eval++;
-				sw_pop[s_tmp.pos].cnt++;			// ---> each solution generation count update
+				sw_pop[s_tmp.pos].cnt++; // ---> each solution generation count update
 			}
 		}
-		if (update) {
+		if (update)
+		{
 			SortbyRankCrowding(sw_pop, colony_size * 2, num_cds, len_amino_seq);
 			CalSelectionProb(sw_pop, colony_size);
 			tmp = pop;
@@ -755,36 +818,36 @@ void MasterTask(Population* pop, Population* sw_pop, std::queue<Sol>* sol_queue,
 /* ------------------------------------ Master thread end definition ------------------------------------*/
 
 /* ------------------------------- Worker thread function definition ------------------------------------*/
-void WorkerTask(Population* pop, std::queue<Sol>* sol_queue, int colony_size, int limit, float mprob, int tid, int num_cds, int* amino_seq_idx, int len_amino_seq, FILE* fp)
+void WorkerTask(Population *pop, std::queue<Sol> *sol_queue, int colony_size, int limit, float mprob, int tid, int num_cds, int *amino_seq_idx, int len_amino_seq, FILE *fp)
 {
 	int start, end, pos;
 	int em_thread, on_thread;
 	bool check;
-	Population* new_sol, * sel_sol, * tmp_sol;
-	Population* solution;
-	Sol* s_queue;
+	Population *new_sol, *sel_sol, *tmp_sol;
+	Population *solution;
+	Sol *s_queue;
 	Sol s_file;
-
 
 	/* work distribution check compelete */
 	em_thread = NUM_THREADS / 2;
 	on_thread = NUM_THREADS - em_thread - 1;
-	if (tid < em_thread) {
+	if (tid < em_thread)
+	{
 		start = (colony_size / em_thread) * tid + ((colony_size % em_thread) <= tid ? (colony_size % em_thread) : tid);
 		end = start + (colony_size / em_thread) + ((colony_size % em_thread) <= tid ? 0 : 1) - 1;
 	}
-	else {
+	else
+	{
 		start = colony_size + (colony_size / on_thread) * (tid - em_thread) + ((colony_size % on_thread) <= (tid - em_thread) ? (colony_size % on_thread) : (tid - em_thread));
 		end = start + (colony_size / on_thread) + ((colony_size % on_thread) <= (tid - em_thread) ? 0 : 1) - 1;
 	}
 	pos = start;
 
-
 	solution = AllocPopulation(1, num_cds, len_amino_seq);
 	tmp_sol = AllocPopulation(1, num_cds, len_amino_seq);
 
 	// For insert queue memory allcation
-	s_queue = (Sol*)malloc(sizeof(Sol) * (end - start + 1));
+	s_queue = (Sol *)malloc(sizeof(Sol) * (end - start + 1));
 	for (int i = 0; i < (end - start + 1); i++)
 	{
 		s_queue[i].pop = AllocPopulation(1, num_cds, len_amino_seq);
@@ -802,10 +865,12 @@ void WorkerTask(Population* pop, std::queue<Sol>* sol_queue, int colony_size, in
 			MLRCS(new_sol, num_cds, len_amino_seq);
 			/* Pareto Comparision */
 			check = ParetoComparison(new_sol, &pop[pos]);
-			if (check) {
+			if (check)
+			{
 				CopyPopulation(new_sol, solution, num_cds, len_amino_seq);
 			}
-			else {
+			else
+			{
 				CopyPopulation(&pop[pos], solution, num_cds, len_amino_seq);
 				solution->counter++;
 			}
@@ -822,10 +887,12 @@ void WorkerTask(Population* pop, std::queue<Sol>* sol_queue, int colony_size, in
 			MLRCS(new_sol, num_cds, len_amino_seq);
 			/* Pareto Comparison */
 			check = ParetoComparison(new_sol, sel_sol);
-			if (check) {
+			if (check)
+			{
 				CopyPopulation(new_sol, solution, num_cds, len_amino_seq);
 			}
-			else {
+			else
+			{
 				CopyPopulation(sel_sol, solution, num_cds, len_amino_seq);
 				solution->counter++;
 			}
@@ -839,7 +906,17 @@ void WorkerTask(Population* pop, std::queue<Sol>* sol_queue, int colony_size, in
 			mHD(tmp_sol, num_cds, len_amino_seq);
 			MLRCS(tmp_sol, num_cds, len_amino_seq);
 			/* Scout Bee search */
-			for (int i = 0; i < solution->cnt; i++)
+			// for (int i = 0; i < solution->cnt; i++)
+			// {
+				// new_sol = Mutation(tmp_sol, num_cds, amino_seq_idx, len_amino_seq, mprob);
+				// mCAI(new_sol, num_cds, amino_seq_idx, len_amino_seq);
+				// mHD(new_sol, num_cds, len_amino_seq);
+				// MLRCS(new_sol, num_cds, len_amino_seq);
+				// CopyPopulation(new_sol, tmp_sol, num_cds, len_amino_seq);
+				// FreePopulation(new_sol, 1, num_cds);
+			// }
+			// tmp_sol->cnt = solution->cnt;
+			for (int i = 0; i < limit; i++)
 			{
 				new_sol = Mutation(tmp_sol, num_cds, amino_seq_idx, len_amino_seq, mprob);
 				mCAI(new_sol, num_cds, amino_seq_idx, len_amino_seq);
@@ -848,7 +925,7 @@ void WorkerTask(Population* pop, std::queue<Sol>* sol_queue, int colony_size, in
 				CopyPopulation(new_sol, tmp_sol, num_cds, len_amino_seq);
 				FreePopulation(new_sol, 1, num_cds);
 			}
-			tmp_sol->cnt = solution->cnt;
+			tmp_sol->cnt = 0;
 			CopyPopulation(tmp_sol, solution, num_cds, len_amino_seq);
 		}
 
@@ -860,11 +937,12 @@ void WorkerTask(Population* pop, std::queue<Sol>* sol_queue, int colony_size, in
 			pos = start;
 	}
 	// non-dominated file update 필요
-	while (!sol_queue[tid].empty()) {
+	while (!sol_queue[tid].empty())
+	{
 		s_file = sol_queue[tid].front();
 		sol_queue[tid].pop();
 		fprintf(fp, "%f %f %f\n", -s_file.pop->sol.obj_val[_mCAI], -s_file.pop->sol.obj_val[_mHD] * (1 / 0.35), s_file.pop->sol.obj_val[_MLRCS]);
-		//FreePopulation(s_file.pop, 1, num_cds);
+		// FreePopulation(s_file.pop, 1, num_cds);
 	}
 
 	FreePopulation(solution, 1, num_cds);
@@ -879,48 +957,110 @@ void WorkerTask(Population* pop, std::queue<Sol>* sol_queue, int colony_size, in
 }
 /* ------------------------------------ Worker thread end definition ------------------------------------*/
 
+#define IDEAL_MCAI 1
+#define IDEAL_MHD 1
+#define IDEAL_MLRCS 0
+#define EUCLID(val1, val2, val3) (float)sqrt(pow(IDEAL_MCAI - val1, 2) + pow(IDEAL_MHD - val2, 2) + pow(val3, 2))
+/* Minimum distance to optimal objective value(point) */
+float MinEuclid(Population *pop, int size)
+{
+	float res;
+	float tmp;
 
-float MinEuclid(float** value, int size);
+	res = 10000;
+	for (int i = 0; i < size; i++)
+	{
+		tmp = EUCLID(pop[i].sol.obj_val[_mCAI], pop[i].sol.obj_val[_mHD], pop[i].sol.obj_val[_MLRCS]);
+		if (tmp < res)
+			res = tmp;
+	}
+
+	return res;
+}
 
 
 int main()
 {
 	srand(time(NULL));
 
+	printf("OpenMP max thread : %d\n", omp_get_max_threads());
+	printf("OpenMP current using thread : %d\n", NUM_THREADS);
+
 	/* amino sequence recieve from FASTA format */
-	char file_name[20] = "Q89BP2.fasta.txt";
+	char file_name[128];
 	char buffer[256];
-	char* amino_seq;		// amino sequence comprising a CDS
-	int* amino_seq_idx;		// amino sequence corresponding index value to struct 'aa'
-	int len_amino_seq;		// length of amino sequence
+	char *amino_seq;	// amino sequence comprising a CDS
+	int *amino_seq_idx; // amino sequence corresponding index value to struct 'aa'
+	int len_amino_seq;	// length of amino sequence
 
-
-	clock_t start, end;
+	/* user input parameter */
+	int max_cycle;	 // number of generations
+	int colony_size; // number of solutions in population
+	int num_cds;	 // number of CDSs
+	int limit;		 // number of solution is not updated
+	float mprob;	 // mutation probability
 	
-
-	/* ---------------------------------------- file processing ------------------------------------------------- */
-	// printf("input file name : );
-	// scanf_s("%s", &file_name);
-	FILE* fp;
-	fopen_s(&fp, file_name, "r");
-	if (fp == NULL) {
+	/* input parameter values */
+	printf("input file name : ");
+	scanf("%s", file_name);
+	printf("input max cycle value : ");
+	scanf("%d", &max_cycle);
+	if (max_cycle <= 0)
+	{
+		printf("input max cycle value > 0\n");
+		return EXIT_FAILURE;
+	}
+	printf("input colony size : ");
+	scanf("%d", &colony_size);
+	if (colony_size <= 0)
+	{
+		printf("input colony size > 0\n");
+		return EXIT_FAILURE;
+	}
+	printf("input number of CDSs : ");
+	scanf("%d", &num_cds);
+	if (num_cds <= 1)
+	{
+		printf("input number of CDSs > 1\n");
+		return EXIT_FAILURE;
+	}
+	printf("input limit value : ");
+	scanf("%d", &limit);
+	if (limit <= 0)
+	{
+		printf("input limit value > 0\n");
+		return EXIT_FAILURE;
+	}
+	printf("input mutation probability (0 ~ 1 value) : ");
+	scanf("%f", &mprob);
+	if (mprob < 0 || mprob > 1)
+	{
+		printf("input mutation probability (0 ~ 1 value) : \n");
+		return EXIT_FAILURE;
+	}
+	FILE *fp;
+	fp = fopen(file_name, "r");
+	if (fp == NULL)
+	{
 		printf("Opening input file failed at line : %d", __LINE__);
 		return EXIT_FAILURE;
 	}
 	fseek(fp, 0, SEEK_END);
 	len_amino_seq = ftell(fp);
 	fseek(fp, 0, SEEK_SET);
-	fgets(buffer, 256, fp);				// jump over first line
+	fgets(buffer, 256, fp); // jump over first line
 	len_amino_seq -= ftell(fp);
-	amino_seq = (char*)malloc(sizeof(char) * len_amino_seq);		// over memory allocation
-	if (amino_seq == NULL) {
+	amino_seq = (char *)malloc(sizeof(char) * len_amino_seq); // over memory allocation
+	if (amino_seq == NULL)
+	{
 		printf("Memory allocation failed at line : %d", __LINE__);
 		return EXIT_FAILURE;
 	}
 
 	int idx = 0;
 	char tmp;
-	while (!feof(fp)) {
+	while (!feof(fp))
+	{
 		tmp = fgetc(fp);
 		if (tmp != '\n')
 			amino_seq[idx++] = tmp;
@@ -930,480 +1070,123 @@ int main()
 
 	fclose(fp);
 
-	amino_seq_idx = (int*)malloc(sizeof(int) * len_amino_seq);		// memory alloc
-	if (amino_seq_idx == NULL) {
+	amino_seq_idx = (int *)malloc(sizeof(int) * len_amino_seq); // memory alloc
+	if (amino_seq_idx == NULL)
+	{
 		printf("Memory allocation failed at line : %d", __LINE__);
 		return EXIT_FAILURE;
 	}
-	for (int i = 0; i < len_amino_seq; i++) {
+	for (int i = 0; i < len_amino_seq; i++)
+	{
 		amino_seq_idx[i] = FindAminoIndex((AA)amino_seq[i]);
-	}
-	/* -------------------------------------------- end file proess ------------------------------------------------- */
-
-
-	/* user input parameter */
-	int max_cycle;				// number of generations
-	int colony_size;			// number of solutions in population
-	int num_cds;				// number of CDSs
-	int limit;					// number of solution is not updated
-	float mprob;				// mutation probability
-
-	/* input parameter values */
-	printf("input max cycle value : "); scanf_s("%d", &max_cycle);
-	if (max_cycle <= 0) {
-		printf("input max cycle value > 0\n");
-		return EXIT_FAILURE;
-	}
-	printf("input colony size : "); scanf_s("%d", &colony_size);
-	if (colony_size <= 0) {
-		printf("input colony size > 0\n");
-		return EXIT_FAILURE;
-	}
-	printf("input number of CDSs : "); scanf_s("%d", &num_cds);
-	if (num_cds <= 1) {
-		printf("input number of CDSs > 1\n");
-		return EXIT_FAILURE;
-	}
-	printf("input limit value : "); scanf_s("%d", &limit);
-	if (limit <= 0) {
-		printf("input limit value > 0\n");
-		return EXIT_FAILURE;
-	}
-	printf("input mutation probability (0 ~ 1 value) : "); scanf_s("%f", &mprob);
-	if (mprob < 0 || mprob > 1) {
-		printf("input mutation probability (0 ~ 1 value) : \n");
-		return EXIT_FAILURE;
 	}
 
 	/* colony size * 2 needs to upper than total threads number */
-	if (colony_size * 2 < NUM_THREADS) {
+	if (colony_size * 2 < NUM_THREADS)
+	{
 		printf("colony size * 2 needs to upper than total threads number\n");
 		return EXIT_FAILURE;
 	}
 
 
-		/* Population memory allocation */
-		Population* pop, * sw_pop;
-		pop = AllocPopulation(colony_size * 2, num_cds, len_amino_seq);
-		sw_pop = AllocPopulation(colony_size * 2, num_cds, len_amino_seq);
+	/* Population memory allocation */
+	Population *pop, *sw_pop;
+	pop = AllocPopulation(colony_size * 2, num_cds, len_amino_seq);
+	sw_pop = AllocPopulation(colony_size * 2, num_cds, len_amino_seq);
 
-		std::queue<Sol> sol_queue[NUM_THREADS - 1];
-
-		int tid;
-		fopen_s(&fp, "Ap_MOABC.txt", "w");
-		omp_set_num_threads(NUM_THREADS);
-		start = clock();
+	std::queue<Sol> sol_queue[NUM_THREADS - 1];
+	float total_time=0;
+	int tid;
+	fp = fopen("Ap_MOABC.txt", "w");
+	omp_set_num_threads(NUM_THREADS);
+    std::chrono::system_clock::time_point start = std::chrono::system_clock::now();
 #pragma omp parallel private(tid)
-		{
-			/* --------------------------------------------------- initialize Population ------------------------------------------------------- */
+	{
+		/* --------------------------------------------------- initialize Population ------------------------------------------------------- */
 #pragma omp for
-			for (int i = 0; i < colony_size; i++)
-			{
-				if (i == colony_size - 1)
-				{
-					GenSolution(&pop[i], num_cds, amino_seq_idx, len_amino_seq, UPPER_GEN);
-					mCAI(&pop[i], num_cds, amino_seq_idx, len_amino_seq);
-					mHD(&pop[i], num_cds, len_amino_seq);
-					MLRCS(&pop[i], num_cds, len_amino_seq);
-				}
-				else {
-					GenSolution(&pop[i], num_cds, amino_seq_idx, len_amino_seq, RANDOM_GEN);
-					/* calculate objective function value */
-					mCAI(&pop[i], num_cds, amino_seq_idx, len_amino_seq);
-					mHD(&pop[i], num_cds, len_amino_seq);
-					MLRCS(&pop[i], num_cds, len_amino_seq);
-				}
-				pop[i].cnt = 0;
-			}
-			// if master thread sort 2 * colony size and initial there are garbage value exist so setting is needs
-#pragma omp for
-			for (int i = colony_size; i < colony_size * 2; i++) {
-				pop[i].sol.obj_val[_mCAI] = 0;
-				pop[i].sol.obj_val[_mHD] = 0;
-				pop[i].sol.obj_val[_MLRCS] = 1;
-			}
-#pragma omp single
-			{
-				SortbyRankCrowding(pop, colony_size, num_cds, len_amino_seq);
-				CalSelectionProb(pop, colony_size);
-			}
-#pragma omp for
-			for (int i = 0; i < colony_size; i++) {
-				CopyPopulation(&pop[i], &sw_pop[i], num_cds, len_amino_seq);
-			}
-			/* -------------------------------------------------------- initialize end ----------------------------------------------------------- */
-
-			tid = omp_get_thread_num();
-			/* Master thread */
-			if (tid == NUM_THREADS - 1)
-				MasterTask(pop, sw_pop, sol_queue, colony_size, colony_size * max_cycle, num_cds, len_amino_seq);
-			/* Worker thread */
-			else
-				WorkerTask(pop, sol_queue, colony_size, limit, mprob, tid, num_cds, amino_seq_idx, len_amino_seq, fp);
-		}
-		end = clock();
-
-		printf("\ntotal time : %lf\n", (double)(end - start)/CLOCKS_PER_SEC);
-
-		//int size;		// store number of pareto optimal solutions eliminating overlapping
-		///* Non dominated file-update */
-		//size = 0;
-		//int p_idx = 0;
-		//while (pop[p_idx].rank == 1) {
-		//	if (pop[p_idx].sol.obj_val[_mCAI] == pop[p_idx + 1].sol.obj_val[_mCAI] &&
-		//		pop[p_idx].sol.obj_val[_mHD] == pop[p_idx + 1].sol.obj_val[_mHD] &&
-		//		pop[p_idx].sol.obj_val[_MLRCS] == pop[p_idx + 1].sol.obj_val[_MLRCS] ||
-		//		pop[p_idx].counter > 0) {
-		//		p_idx++;
-		//		continue;
-		//	}
-		//	else {
-		//		//fprintf(fp, "\n ------------------------------ Print Population ------------------------------ \n ");
-		//		//fprintf(fp, "\trank : %d\n", pop[p_idx].rank);
-		//		//fprintf(fp, "\tcrowding distance : %f\n", pop[p_idx].crowding_distance);
-		//		//fprintf(fp, "\tfitness : %f\n", pop[p_idx].fitness);
-		//		//fprintf(fp, "\tcounter : %d\n", pop[p_idx].counter);
-		//		//fprintf(fp, "\tselection probabiliy : %f\n", pop[p_idx].sel_prob);
-		//
-		//		//fprintf(fp, "\tmCAI value : %f\n", pop[p_idx].sol.obj_val[_mCAI]);
-		//		//fprintf(fp, "\tmHD value : %f\n", pop[p_idx].sol.obj_val[_mHD]);
-		//		//fprintf(fp, "\tMLRCS value : %f\n", pop[p_idx].sol.obj_val[_MLRCS]);
-		//
-		//		//idx = 0;
-		//		//for (int i = 0; i < num_cds; i++) {					// population's CDSs loop
-		//		//	fprintf(fp, "\nPopulatin's CDS [%d] : \n", i);
-		//		//	for (int j = 0; j < len_amino_seq * 3; j++) {
-		//		//		fprintf(fp, "%c", pop[p_idx].sol.cds[i * len_amino_seq * 3 + j]);
-		//		//	}
-		//		//}
-		//
-		//		fprintf(fp, "%f %f %f\n", -pop[p_idx].sol.obj_val[_mCAI], -pop[p_idx].sol.obj_val[_mHD] * (1 / 0.35), pop[p_idx].sol.obj_val[_MLRCS]);
-		//		size++;
-		//		p_idx++;
-		//	}
-		//}
-
 		for (int i = 0; i < colony_size; i++)
 		{
-			if(pop[i].rank == 1)
-				fprintf(fp, "%f %f %f\n", -pop[i].sol.obj_val[_mCAI], -pop[i].sol.obj_val[_mHD] * (1 / 0.35), pop[i].sol.obj_val[_MLRCS]);
-
+			if (i == colony_size - 1)
+			{
+				GenSolution(&pop[i], num_cds, amino_seq_idx, len_amino_seq, UPPER_GEN);
+				mCAI(&pop[i], num_cds, amino_seq_idx, len_amino_seq);
+				mHD(&pop[i], num_cds, len_amino_seq);
+				MLRCS(&pop[i], num_cds, len_amino_seq);
+			}
+			else
+			{
+				GenSolution(&pop[i], num_cds, amino_seq_idx, len_amino_seq, RANDOM_GEN);
+				/* calculate objective function value */
+				mCAI(&pop[i], num_cds, amino_seq_idx, len_amino_seq);
+				mHD(&pop[i], num_cds, len_amino_seq);
+				MLRCS(&pop[i], num_cds, len_amino_seq);
+			}
+			pop[i].cnt = 0;
 		}
-		fclose(fp);
-		/* ---------------------- End file process -------------------------------- */
+		// if master thread sort 2 * colony size and initial there are garbage value exist so setting is needs
+#pragma omp for
+		for (int i = colony_size; i < colony_size * 2; i++)
+		{
+			pop[i].sol.obj_val[_mCAI] = 0;
+			pop[i].sol.obj_val[_mHD] = 0;
+			pop[i].sol.obj_val[_MLRCS] = 1;
+		}
+#pragma omp single
+		{
+			SortbyRankCrowding(pop, colony_size, num_cds, len_amino_seq);
+			CalSelectionProb(pop, colony_size);
+		}
+#pragma omp for
+		for (int i = 0; i < colony_size; i++)
+		{
+			CopyPopulation(&pop[i], &sw_pop[i], num_cds, len_amino_seq);
+		}
+		/* -------------------------------------------------------- initialize end ----------------------------------------------------------- */
 
-
-		/* ---------------------- For assess solutions processes -------------------------- */
-		//float** org;
-		//int org_idx;
-		//org = (float**)malloc(sizeof(float*) * size);
-		//for (int i = 0; i < size; i++) {
-		//	org[i] = (float*)malloc(sizeof(float) * OBJECTIVE_NUM);
-		//}
-		//
-		//org_idx = 0;
-		//p_idx = 0;
-		//while (pop[p_idx].rank == 1) {
-		//	if (pop[p_idx].sol.obj_val[_mCAI] == pop[p_idx + 1].sol.obj_val[_mCAI] &&
-		//		pop[p_idx].sol.obj_val[_mHD] == pop[p_idx + 1].sol.obj_val[_mHD] &&
-		//		pop[p_idx].sol.obj_val[_MLRCS] == pop[p_idx + 1].sol.obj_val[_MLRCS]) {
-		//		p_idx++;
-		//		continue;
-		//	}
-		//	else {
-		//		org[org_idx][_mCAI] = pop[p_idx].sol.obj_val[_mCAI];
-		//		org[org_idx][_mHD] = pop[p_idx].sol.obj_val[_mHD];
-		//		org[org_idx][_MLRCS] = pop[p_idx].sol.obj_val[_MLRCS];
-		//		p_idx++;
-		//		org_idx++;
-		//	}
-		//}
-		//
-		//printf("Minimum distance to the ideal point : %f\n", MinEuclid(org, size));
-		//printf("size : %d\n", size);
-		//
-		//
-		//for (int i = 0; i < size; i++) {
-		//	free(org[i]);
-		//}
-		//free(org);
-		/* ----------------------------------- process end ----------------------------------- */
-
-		// Print 
-		//for (int i = 0; i < colony_size; i++) {
-		//	printf("%f %f %f\n", pop[i].sol.obj_val[_mCAI], pop[i].sol.obj_val[_mHD], pop[i].sol.obj_val[_MLRCS]);
-		//}
-
-
-		/* free memory */
-		FreePopulation(pop, colony_size * 2, num_cds);
-		FreePopulation(sw_pop, colony_size * 2, num_cds);
-		free(amino_seq);
-		free(amino_seq_idx);
-
-		return EXIT_SUCCESS;
+		tid = omp_get_thread_num();
+		/* Master thread */
+		if (tid == NUM_THREADS - 1)
+			MasterTask(pop, sw_pop, sol_queue, colony_size, colony_size * max_cycle, num_cds, len_amino_seq);
+		/* Worker thread */
+		else
+			WorkerTask(pop, sol_queue, colony_size, limit, mprob, tid, num_cds, amino_seq_idx, len_amino_seq, fp);
 	}
+    std::chrono::duration<double> sec = std::chrono::system_clock::now() - start;
+    total_time += static_cast<float>(sec.count());
 
+	printf("\ntotal time : %f\n", total_time);
 
-
-	/* ---------------------------------- For function test -------------------------------------  */
-	/* print population's attribute values */
-	void PrintPopulation(const Population * population, int num_cds, int len_amino_seq)
+	for (int i = 0; i < colony_size * 2; i++)
 	{
-		int idx;
-
-		printf("\n ------------------------------ Print Population ------------------------------ \n ");
-		printf("\trank : %d\n", population->rank);
-		printf("\tcrowding distance : %f\n", population->crowding_distance);
-		printf("\tfitness : %f\n", population->fitness);
-		printf("\tcounter : %d\n", population->counter);
-		printf("\tselection probabiliy : %f\n", population->sel_prob);
-
-		printf("\tmCAI value : %f\n", population->sol.obj_val[_mCAI]);
-		printf("\tmHD value : %f\n", population->sol.obj_val[_mHD]);
-		printf("\tMLRCS value : %f\n", population->sol.obj_val[_MLRCS]);
-
-		idx = 0;
-		for (int i = 0; i < num_cds; i++) {					// population's CDSs loop
-			printf("\nPopulatin's CDS [%d] : \n", i);
-			for (int j = 0; j < len_amino_seq * 3; j++) {
-				printf("%c", population->sol.cds[i * len_amino_seq * 3 + j]);
-			}
-		}
-
-		return;
+		pop[i].sol.obj_val[_mHD] = pop[i].sol.obj_val[_mHD] / 0.4;
 	}
-	/* print Aminoacids definition check */
-	void PrintAminoAcids()
+
+    start = std::chrono::system_clock::now();
+	for (int i = 0; i < colony_size * 2; i++)
 	{
-		char file_name[20] = "amino.txt";
-		FILE* fp;
-
-		fopen_s(&fp, file_name, "w");
-		if (fp == NULL) {
-			printf("%s open failure", file_name);
-			return;
-		}
-
-		fprintf(fp, "Aminoacids codon frequency used in out study\n\n");
-		for (int i = 0; i < 20; i++) {
-			fprintf(fp, "-------------- Aminoacid : %c -----------\n", aa[i].name);
-			for (int j = 0; j < aa[i].num_codons; j++) {
-				fprintf(fp, "codon[%d] : %s\tadaptation : %f\n", j + 1, aa[i].codons[j], aa[i].adaptation[j]);
-			}
-			fprintf(fp, "\n");
-		}
-
-		fclose(fp);
-
-		/* console window printing */
-		/*printf("Aminoacids codon frequency used in out study\n");
-		for (int i = 0; i < 20; i++) {
-			printf("-------------- Aminoacid : %c ---------\n", aa[i].name);
-			for (int j = 0; j < aa[i].num_codons; j++) {
-				printf("codon[%d] : %s\tadaptation : %f\n", j + 1, aa[i].codons[j], aa[i].adaptation[j]);
-			}
-			printf("\n");
-		}*/
-
-		return;
+		fprintf(fp, "%f %f %f\n", -pop[i].sol.obj_val[_mCAI], -pop[i].sol.obj_val[_mHD], pop[i].sol.obj_val[_MLRCS]);
 	}
-	/* cds to amino sequence and comparison */
-	void CompareCdsToAminoAcids(const char* cds, int num_cds, const int* amino_seq_idx, const char* amino_seq, int len_amino_seq)
-	{
-		char codon[3];
-		char* ch_amino_seq;
-		char* idx_amino_seq;
-		int idx;
-		int c_idx;
-
-		// memory allocation
-		ch_amino_seq = (char*)malloc(sizeof(char) * num_cds * len_amino_seq * 3);
-		idx_amino_seq = (char*)malloc(sizeof(char) * len_amino_seq * 3);
+    sec = std::chrono::system_clock::now() - start;
+    total_time += static_cast<float>(sec.count());
+	fclose(fp);
 
 
-		/* -------------------------------------- CDS to Amino ----------------------------------------- */
-		c_idx = 0;
-		for (int i = 0; i < num_cds; i++) {
-			for (int j = 0; j < len_amino_seq; j++) {
-				codon[0] = cds[i * len_amino_seq * 3 + j * 3];
-				codon[1] = cds[i * len_amino_seq * 3 + j * 3 + 1];
-				codon[2] = cds[i * len_amino_seq * 3 + j * 3 + 2];
-				for (int k = 0; k < 20; k++) {
-					for (int l = 0; l < aa[k].num_codons; l++) {
-						if (codon[0] == aa[k].codons[l][0] &&
-							codon[1] == aa[k].codons[l][1] &&
-							codon[2] == aa[k].codons[l][2]) {
-							ch_amino_seq[c_idx++] = (char)aa[k].name;
-							break;
-						}
-					}
-				}
-			}
-		}
+	printf("Minimum distance to the ideal point : %f\n", MinEuclid(pop, colony_size * 2));
+	printf("total time : %f\n",total_time);
 
-		/*for (int i = 0; i < len_amino_seq; i++){
-			printf("%c", ch_amino_seq[i]);
-		}*/
-
-		printf("\nCDS to aminoacids seqeunces comparison ....\n");
-		c_idx = 0;
-		for (int i = 0; i < num_cds; i++) {
-			idx = 0;
-			for (int j = 0; j < len_amino_seq; j++) {
-				if (ch_amino_seq[c_idx++] != amino_seq[idx++]) {
-					printf("Warnings : amino acids sequences are different\n");
-					return;
-				}
-			}
-		}
-		printf("\nCDS to amino seqeunce comparison is compelete !!\n");
-		/* ------------------------------------------------------------------------------------------- */
+	
+	// Print
+	// for (int i = 0; i < colony_size; i++) {
+	//	printf("%f %f %f\n", pop[i].sol.obj_val[_mCAI], pop[i].sol.obj_val[_mHD], pop[i].sol.obj_val[_MLRCS]);
+	//}
 
 
-		/* ----------------------------------- amino index to amino ---------------------------------- */
-		idx = 0;
-		for (int i = 0; i < len_amino_seq; i++) {
-			idx_amino_seq[i] = (char)aa[amino_seq_idx[idx++]].name;
-		}
-
-		printf("\nAmino indicies, amino seqeunce compare comparison ....\n");
-		for (int i = 0; i < len_amino_seq; i++) {
-			if (idx_amino_seq[i] != amino_seq[i]) {
-				printf("amino sequences's indices are different\n");
-				return;
-			}
-		}
-		printf("Amino indicies, amino seqeunce compare is compelete !!\n");
-		/* ------------------------------------------------------------------------------------------- */
+	/* free memory */
+	FreePopulation(pop, colony_size * 2, num_cds);
+	FreePopulation(sw_pop, colony_size * 2, num_cds);
+	free(amino_seq);
+	free(amino_seq_idx);
 
 
-
-		// free memory
-		free(ch_amino_seq);
-		free(idx_amino_seq);
-
-		return;
-	}
-
-	void CheckMLRCS(const char* s, int size)
-	{
-		int p, q, l;
-		int** LCS;
-		int max;
-
-		LCS = (int**)malloc(sizeof(int*) * (size + 1));
-		for (int i = 0; i < size + 1; i++) {
-			LCS[i] = (int*)malloc(sizeof(int) * (size + 1));
-		}
-
-		max = 0;
-		for (int i = 0; i < size + 1; i++) {
-			for (int j = 0; j < size + 1; j++) {
-				if (i == 0 || j == 0 || (i == j)) {
-					LCS[i][j] = 0;
-				}
-				else if (s[i - 1] == s[j - 1]) {
-					LCS[i][j] = LCS[i - 1][j - 1] + 1;
-					if (LCS[i][j] >= max) {
-						max = LCS[i][j];
-						l = max;
-						p = i - max;
-						q = j - max;
-					}
-				}
-				else
-					LCS[i][j] = 0;
-			}
-		}
-
-		for (int i = 0; i < size + 1; i++) {
-			for (int j = 0; j < size + 1; j++) {
-				printf("%d ", LCS[i][j]);
-			}
-			printf("\n");
-		}
-
-		printf("p : %d\n", p);
-		printf("q : %d\n", q);
-		printf("l : %d\n", l);
-
-		for (int i = 0; i < size + 1; i++) {
-			free(LCS[i]);
-		}
-		free(LCS);
-
-		return;
-	}
-
-	/* original population and muatated population comparison */
-	void CheckMutation(const Population * pop1, const Population * pop2, int num_cds, const int* amino_seq_idx, const char* amino_seq, int len_amino_seq)
-	{
-		int len_cds;
-
-		printf("CompareCdsToAminoAcids pop1 and pop2 ...\n");
-		CompareCdsToAminoAcids(pop1->sol.cds, num_cds, amino_seq_idx, amino_seq, len_amino_seq);
-		CompareCdsToAminoAcids(pop2->sol.cds, num_cds, amino_seq_idx, amino_seq, len_amino_seq);
-
-		len_cds = len_amino_seq * 3;
-		printf("Check which amino sequneces index are changed ...");
-		for (int i = 0; i < num_cds; i++) {
-			for (int j = 0; j < len_amino_seq; j++) {
-				if (pop1->sol.cds[i * len_cds + j * 3] != pop2->sol.cds[i * len_cds + j * 3] ||
-					pop1->sol.cds[i * len_cds + j * 3 + 1] != pop2->sol.cds[i * len_cds + j * 3 + 1] ||
-					pop1->sol.cds[i * len_cds + j * 3 + 2] != pop2->sol.cds[i * len_cds + j * 3 + 2]) {
-					printf("index : %d is changed\n", i * len_cds + j * 3);
-				}
-			}
-		}
-	}
-
-
-	/* To assess solution considering objective function value */
-	/* To calculate Set coverage */
-	float Setcoverage(int* a[OBJECTIVE_NUM], int* b[OBJECTIVE_NUM], int a_size, int b_size)
-	{
-		// the ratio of a coverage to b
-		bool* check;
-		int cnt;
-
-		check = (bool*)malloc(sizeof(bool) * b_size);
-		memset(check, false, sizeof(bool) * b_size);
-
-		for (int i = 0; i < a_size; i++) {
-			for (int j = 0; j < b_size; j++) {
-				if (a[i][_mCAI] >= b[j][_mCAI] &&
-					a[i][_mHD] >= b[j][_mHD] &&
-					a[i][_MLRCS] <= b[j][_MLRCS])
-					check[j] = true;
-			}
-		}
-
-		cnt = 0;
-		for (int i = 0; i < b_size; i++) {
-			if (check[i] == true)
-				cnt++;
-		}
-
-		return (float)cnt / b_size;
-	}
-
-#define IDEAL_MCAI	1
-#define IDEAL_MHD	0.40
-#define IDEAL_MLRCS	0
-#define EUCLID(val1,val2,val3) (float)sqrt(pow(IDEAL_MCAI - val1, 2) + pow(IDEAL_MHD - val2, 2) + pow(val3, 2))
-	/* Minimum distance to optimal objective value(point) */
-	float MinEuclid(float** value, int size)
-	{
-		float res;
-		float tmp;
-
-		res = 100;
-		for (int i = 0; i < size; i++) {
-			tmp = EUCLID(value[i][_mCAI], value[i][_mHD], value[i][_MLRCS]);
-			if (tmp < res)
-				res = tmp;
-		}
-
-		return res;
-	}
+	return EXIT_SUCCESS;
+}
